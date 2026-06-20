@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>КП — Новый Полив</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
@@ -507,105 +510,178 @@ const SectionBlock = React.memo(function SectionBlock({
 });
 
 // ===================== PRINT VIEW — вне KPApp =====================
-function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispolnitel, phone, logN, shefN, shefUnit, notes, grand, final }) {
+function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispolnitel, phone, projNum, projArea, projCulture, projRegion, projWater, logN, shefN, shefUnit, notes, grand, final }) {
   let row=0;
-  const money=n=>{
-    n=parseFloat(n)||0;
-    if(!n) return '';
-    return n.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+'\u00A0руб.';
-  };
-  const qtyF=n=>{ n=parseFloat(n)||0; if(!n)return''; return n%1===0?String(n):n.toLocaleString('ru-RU',{maximumFractionDigits:1}); };
-  const grandFinal = final||grand;
-  const GREEN='#3D8C2A', GDARK='#2B6B1F', GHEAD='#F0F7EE', GROW='#EEF7EB', GLINE='#C5DFC0';
+  const money=n=>{ n=parseFloat(n)||0; if(!n)return''; return n.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+'\u00A0\u20BD'; };
+  const qtyF=n=>{ n=parseFloat(n)||0; if(!n)return''; return n%1===0?n.toLocaleString('ru-RU'):n.toLocaleString('ru-RU',{maximumFractionDigits:1}); };
+  const grandFinal=final||grand;
+  const eqTotal=sections.reduce((t,s)=>t+s.items.reduce((a,i)=>a+(i.qty||0)*(i.price||0),0),0);
+
+  // Палитра концепта
+  const PRIMARY='#0B3A63', SECOND='#2C7FB8', ACCENT='#3D8C2A', BG='#F8FAFC', TEXT='#1D1D1F', DIV='#D8DEE5', MUTED='#6B7785';
+
+  // Карточки проекта — только заполненные
+  const cards=[
+    {k:'Площадь', v:projArea, c:ACCENT},
+    {k:'Культура', v:projCulture, c:SECOND},
+    {k:'Регион', v:projRegion, c:ACCENT},
+    {k:'Источник воды', v:projWater, c:SECOND},
+  ].filter(c=>c.v&&c.v.trim());
+
+  const dripLine=(
+    <div style={{display:'flex',alignItems:'center',margin:'18px 0',gap:0}}>
+      <div style={{height:2,background:SECOND,width:18,flex:'none'}}></div>
+      {[0,1,2,3,4].map(i=>[
+        <div key={'n'+i} style={{width:7,height:7,borderRadius:'50%',background:ACCENT,flexShrink:0}}></div>,
+        <div key={'r'+i} style={{height:2,background:SECOND,flex:1}}></div>
+      ])}
+      <div style={{width:7,height:7,borderRadius:'50%',background:ACCENT,flexShrink:0}}></div>
+    </div>
+  );
 
   return(
-    <div style={{fontFamily:'Arial,Helvetica,sans-serif',fontSize:12.5,color:'#1a1a1a',lineHeight:1.45}}>
-      {/* Шапка */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',paddingBottom:14}}>
-        <img src={'data:image/png;base64,'+LOGO_B64} alt="Новый Полив" style={{height:54,width:'auto'}}/>
+    <div style={{fontFamily:'Inter,Arial,Helvetica,sans-serif',color:TEXT,lineHeight:1.5}}>
+
+      {/* ===== ШАПКА ===== */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',paddingBottom:14,borderBottom:'2px solid '+PRIMARY}}>
+        <img src={'data:image/png;base64,'+LOGO_B64} alt="Новый Полив" style={{height:42,width:'auto'}}/>
         <div style={{textAlign:'right',paddingTop:2}}>
-          <div style={{fontSize:16,fontWeight:800,color:GDARK}}>ООО «ТД Новый Полив»</div>
-          <div style={{fontSize:11,color:'#555',marginTop:3}}>г. Воронеж, ул. Пеше-Стрелецкая, 74А</div>
-          <div style={{fontSize:11,color:'#555',marginTop:2}}>+7-962-331-65-65 | new-poliv@yandex.ru</div>
-        </div>
-      </div>
-      <div style={{borderBottom:'2px solid '+GREEN,marginBottom:22}}></div>
-
-      {/* Заголовок */}
-      <div style={{textAlign:'center',marginBottom:16}}>
-        <div style={{fontSize:23,fontWeight:800,color:'#1a1a1a',letterSpacing:'0.3px'}}>Коммерческое предложение</div>
-        <div style={{fontSize:11.5,color:'#666',marginTop:6}}>
-          {[kpNum&&('№ '+kpNum),'от '+new Date(kpDate+'T12:00:00').toLocaleDateString('ru-RU',{day:'2-digit',month:'long',year:'numeric'})].filter(Boolean).join('   \u00B7   ')}
+          <div style={{fontSize:15,fontWeight:700,color:PRIMARY}}>ООО «ТД Новый Полив»</div>
+          <div style={{fontSize:10.5,color:MUTED,marginTop:3}}>г. Воронеж, ул. Пеше-Стрелецкая, 74А · ИНН 3665825656</div>
+          <div style={{fontSize:10.5,color:MUTED,marginTop:1}}>+7-962-331-65-65 · new-poliv@yandex.ru · new-poliv.ru</div>
         </div>
       </div>
 
-      {/* Блок реквизитов — две колонки */}
-      <table style={{width:'100%',borderCollapse:'collapse',fontSize:11.5,marginBottom:18}}>
+      {/* ===== ЗАГОЛОВОК + СИГНАТУРА ===== */}
+      <div style={{marginTop:24}}>
+        <div style={{fontSize:11,fontWeight:600,letterSpacing:'2px',color:SECOND,textTransform:'uppercase'}}>Коммерческое предложение</div>
+        <div style={{fontSize:30,fontWeight:700,color:PRIMARY,letterSpacing:'-0.6px',marginTop:6,lineHeight:1.1}}>Система капельного орошения</div>
+        {dripLine}
+        <div style={{fontSize:13,color:MUTED}}>Проектирование, оборудование и монтаж под ключ</div>
+      </div>
+
+      {/* ===== РЕКВИЗИТЫ ===== */}
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:11.5,marginTop:22}}>
         <tbody>
           <tr>
-            <td style={{padding:'3px 0',color:'#777',width:90}}>Заказчик:</td>
-            <td style={{padding:'3px 0',fontWeight:700,color:'#1a1a1a'}}>{zakazchik||'—'}</td>
-            <td style={{padding:'3px 0',color:'#777',width:90}}>Объект:</td>
-            <td style={{padding:'3px 0',fontWeight:600,color:'#1a1a1a'}}>{object||'—'}</td>
+            <td style={{padding:'3px 0',color:MUTED,width:90}}>Заказчик:</td>
+            <td style={{padding:'3px 0',fontWeight:600}}>{zakazchik||'—'}</td>
+            <td style={{padding:'3px 0',color:MUTED,width:90}}>{projNum?'№ проекта:':'Объект:'}</td>
+            <td style={{padding:'3px 0',fontWeight:600}}>{projNum||object||'—'}</td>
           </tr>
           <tr>
-            <td style={{padding:'3px 0',color:'#777'}}>Исполнитель:</td>
-            <td style={{padding:'3px 0',color:'#1a1a1a'}}>{ispolnitel||'—'}</td>
-            <td style={{padding:'3px 0',color:'#777'}}>Телефон:</td>
-            <td style={{padding:'3px 0',color:'#1a1a1a'}}>{phone||'—'}</td>
+            <td style={{padding:'3px 0',color:MUTED}}>Исполнитель:</td>
+            <td style={{padding:'3px 0'}}>{ispolnitel||'—'}</td>
+            <td style={{padding:'3px 0',color:MUTED}}>Телефон:</td>
+            <td style={{padding:'3px 0'}}>{phone||'—'}</td>
+          </tr>
+          <tr>
+            <td style={{padding:'3px 0',color:MUTED}}>Дата:</td>
+            <td style={{padding:'3px 0'}}>{new Date(kpDate+'T12:00:00').toLocaleDateString('ru-RU',{day:'2-digit',month:'long',year:'numeric'})}</td>
+            <td style={{padding:'3px 0',color:MUTED}}>Тип цен:</td>
+            <td style={{padding:'3px 0',fontWeight:600}}>{typeCeny}</td>
           </tr>
         </tbody>
       </table>
 
-      {/* Таблица */}
+      {/* ===== КАРТОЧКИ ПРОЕКТА ===== */}
+      {cards.length>0&&(
+        <div style={{display:'grid',gridTemplateColumns:'repeat('+cards.length+',1fr)',gap:12,marginTop:20}}>
+          {cards.map((c,i)=>(
+            <div key={i} style={{border:'1px solid '+DIV,borderRadius:6,padding:'14px 14px 12px',position:'relative',overflow:'hidden'}}>
+              <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:c.c}}></div>
+              <div style={{fontSize:10,color:MUTED,textTransform:'uppercase',letterSpacing:'0.5px'}}>{c.k}</div>
+              <div style={{fontSize:17,fontWeight:600,color:PRIMARY,marginTop:6,letterSpacing:'-0.3px'}}>{c.v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ===== ТАБЛИЦА ОБОРУДОВАНИЯ ===== */}
+      <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:28,letterSpacing:'-0.3px'}}>Спецификация оборудования</div>
+      <div style={{fontSize:12,color:MUTED,marginBottom:14}}>Комплектующие системы орошения по проекту</div>
+
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:11.5}}>
         <thead>
-          <tr style={{background:GREEN,color:'#fff'}}>
-            <th style={{padding:'8px 7px',textAlign:'center',width:34,fontWeight:700}}>№</th>
-            <th style={{padding:'8px 9px',textAlign:'left',fontWeight:700}}>Наименование</th>
-            <th style={{padding:'8px 7px',textAlign:'center',width:74,fontWeight:700}}>Кол-во</th>
-            <th style={{padding:'8px 7px',textAlign:'center',width:46,fontWeight:700}}>Ед.</th>
-            <th style={{padding:'8px 9px',textAlign:'right',width:104,fontWeight:700}}>Цена</th>
-            <th style={{padding:'8px 9px',textAlign:'right',width:116,fontWeight:700}}>Сумма</th>
+          <tr>
+            <th style={{padding:'10px 9px',textAlign:'center',width:34,fontWeight:600,fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px',color:PRIMARY,background:BG,borderBottom:'2px solid '+DIV}}>№</th>
+            <th style={{padding:'10px 9px',textAlign:'left',fontWeight:600,fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px',color:PRIMARY,background:BG,borderBottom:'2px solid '+DIV}}>Наименование</th>
+            <th style={{padding:'10px 9px',textAlign:'center',width:70,fontWeight:600,fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px',color:PRIMARY,background:BG,borderBottom:'2px solid '+DIV}}>Кол-во</th>
+            <th style={{padding:'10px 9px',textAlign:'center',width:46,fontWeight:600,fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px',color:PRIMARY,background:BG,borderBottom:'2px solid '+DIV}}>Ед.</th>
+            <th style={{padding:'10px 9px',textAlign:'right',width:100,fontWeight:600,fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px',color:PRIMARY,background:BG,borderBottom:'2px solid '+DIV}}>Цена</th>
+            <th style={{padding:'10px 9px',textAlign:'right',width:120,fontWeight:600,fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px',color:PRIMARY,background:BG,borderBottom:'2px solid '+DIV}}>Сумма</th>
           </tr>
         </thead>
         <tbody>
-          {sections.map(sec=>{
+          {sections.map((sec,si)=>{
             const active=sec.items.filter(i=>i.name&&(i.qty>0));
             if(!active.length)return null;
+            const secSum=active.reduce((t,i)=>t+(i.qty||0)*(i.price||0),0);
+            const accColor=si%2===0?SECOND:ACCENT;
             return[
               <tr key={'h'+sec.id}>
-                <td colSpan={6} style={{padding:'7px 9px',fontWeight:700,background:GHEAD,color:GDARK,fontSize:12}}>{sec.title}</td>
+                <td colSpan={6} style={{padding:'14px 9px 5px',fontWeight:600,fontSize:10.5,color:accColor,textTransform:'uppercase',letterSpacing:'0.5px'}}>{sec.title}</td>
               </tr>,
-              ...active.map((item,ii)=>{row++;const sum=(item.qty||0)*(item.price||0);return(
-                <tr key={item.id} style={{background:ii%2===0?'#fff':GROW,borderBottom:'1px solid '+GLINE}}>
-                  <td style={{padding:'6px 7px',textAlign:'center',color:'#777'}}>{row}</td>
-                  <td style={{padding:'6px 9px'}}>{item.name}</td>
-                  <td style={{padding:'6px 7px',textAlign:'center'}}>{qtyF(item.qty)}</td>
-                  <td style={{padding:'6px 7px',textAlign:'center',color:'#666'}}>{item.unit||'шт.'}</td>
-                  <td style={{padding:'6px 9px',textAlign:'right',whiteSpace:'nowrap'}}>{money(item.price)}</td>
-                  <td style={{padding:'6px 9px',textAlign:'right',fontWeight:600,whiteSpace:'nowrap'}}>{money(sum)}</td>
+              ...active.map(item=>{row++;const sum=(item.qty||0)*(item.price||0);return(
+                <tr key={item.id}>
+                  <td style={{padding:'9px',textAlign:'center',color:MUTED,fontSize:11,borderBottom:'1px solid '+DIV}}>{row}</td>
+                  <td style={{padding:'9px',borderBottom:'1px solid '+DIV}}>{item.name}</td>
+                  <td style={{padding:'9px',textAlign:'center',color:MUTED,borderBottom:'1px solid '+DIV}}>{qtyF(item.qty)}</td>
+                  <td style={{padding:'9px',textAlign:'center',color:MUTED,borderBottom:'1px solid '+DIV}}>{item.unit||'шт.'}</td>
+                  <td style={{padding:'9px',textAlign:'right',fontWeight:500,whiteSpace:'nowrap',borderBottom:'1px solid '+DIV}}>{money(item.price)}</td>
+                  <td style={{padding:'9px',textAlign:'right',fontWeight:500,whiteSpace:'nowrap',borderBottom:'1px solid '+DIV}}>{money(sum)}</td>
                 </tr>
               );}),
+              <tr key={'s'+sec.id}>
+                <td colSpan={5} style={{padding:'8px 9px',textAlign:'right',fontWeight:600,color:PRIMARY,borderBottom:'2px solid '+DIV,fontSize:11}}>Подытог</td>
+                <td style={{padding:'8px 9px',textAlign:'right',fontWeight:600,color:PRIMARY,borderBottom:'2px solid '+DIV,whiteSpace:'nowrap'}}>{money(secSum)}</td>
+              </tr>,
             ];
           })}
-          {logN>0&&<tr style={{borderBottom:'1px solid '+GLINE}}><td></td><td style={{padding:'6px 9px'}}>Логистика</td><td colSpan={3}></td><td style={{padding:'6px 9px',textAlign:'right',whiteSpace:'nowrap'}}>{money(logN)}</td></tr>}
-          {shefN>0&&<tr style={{borderBottom:'1px solid '+GLINE}}><td></td><td style={{padding:'6px 9px'}}>Шеф-монтаж / монтаж ({shefUnit})</td><td colSpan={3}></td><td style={{padding:'6px 9px',textAlign:'right',whiteSpace:'nowrap'}}>{money(shefN)}</td></tr>}
-          <tr style={{background:GHEAD,borderTop:'2px solid '+GREEN}}>
-            <td colSpan={5} style={{padding:'9px',textAlign:'right',fontWeight:800,fontSize:13}}>Итого:</td>
-            <td style={{padding:'9px',textAlign:'right',fontWeight:800,fontSize:13,color:GDARK,whiteSpace:'nowrap'}}>{money(grandFinal)}</td>
-          </tr>
         </tbody>
       </table>
 
-      {notes&&<div style={{marginTop:14,fontSize:11.5,color:'#555'}}><b>Примечания:</b> {notes}</div>}
+      {/* ===== СТРУКТУРА СТОИМОСТИ ===== */}
+      {(logN>0||shefN>0)&&(<>
+        <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:30,letterSpacing:'-0.3px'}}>Структура стоимости</div>
+        <div style={{fontSize:12,color:MUTED,marginBottom:14}}>Распределение по статьям проекта</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
+          <div style={{border:'1px solid '+DIV,borderRadius:6,padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
+            <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:MUTED}}></div>
+            <div style={{fontSize:10.5,color:MUTED,textTransform:'uppercase',letterSpacing:'0.5px',fontWeight:600}}>Оборудование</div>
+            <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:8,whiteSpace:'nowrap'}}>{money(eqTotal)}</div>
+          </div>
+          <div style={{border:'1px solid '+DIV,borderRadius:6,padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
+            <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:SECOND}}></div>
+            <div style={{fontSize:10.5,color:MUTED,textTransform:'uppercase',letterSpacing:'0.5px',fontWeight:600}}>Логистика</div>
+            <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:8,whiteSpace:'nowrap'}}>{logN>0?money(logN):'—'}</div>
+          </div>
+          <div style={{border:'1px solid '+DIV,borderRadius:6,padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
+            <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:ACCENT}}></div>
+            <div style={{fontSize:10.5,color:MUTED,textTransform:'uppercase',letterSpacing:'0.5px',fontWeight:600}}>Монтаж ({shefUnit})</div>
+            <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:8,whiteSpace:'nowrap'}}>{shefN>0?money(shefN):'—'}</div>
+          </div>
+        </div>
+      </>)}
 
-      <div style={{marginTop:26,paddingTop:8,borderTop:'1px solid #e5e5e5',fontSize:10,color:'#999',textAlign:'center'}}>
-        Коммерческое предложение действительно при наличии товара и подлежит уточнению по срокам поставки.
+      {/* ===== ИТОГ ===== */}
+      <div style={{marginTop:18,background:PRIMARY,borderRadius:10,padding:'22px 26px',display:'flex',justifyContent:'space-between',alignItems:'center',color:'#fff'}}>
+        <div style={{fontSize:13,fontWeight:500,letterSpacing:'0.5px',opacity:0.85,textTransform:'uppercase'}}>Итого по проекту</div>
+        <div style={{fontSize:28,fontWeight:700,letterSpacing:'-0.6px',whiteSpace:'nowrap'}}>{money(grandFinal)}</div>
+      </div>
+
+      {notes&&<div style={{marginTop:16,fontSize:11.5,color:MUTED}}><b style={{color:TEXT}}>Примечания:</b> {notes}</div>}
+
+      {/* ===== ФУТЕР ===== */}
+      <div style={{marginTop:30,paddingTop:14,borderTop:'1px solid '+DIV,display:'flex',justifyContent:'space-between',fontSize:9.5,color:MUTED}}>
+        <span>ООО «ТД Новый Полив» · ИНН 3665825656 · new-poliv.ru</span>
+        <span>Предложение действительно при наличии товара · уточняется по срокам поставки</span>
       </div>
     </div>
   );
 }
+
+
 
 // ===================== MAIN APP =====================
 function KPApp(){
@@ -623,6 +699,11 @@ function KPApp(){
   const [object,setObject]=useState('');
   const [ispolnitel,setIspolnitel]=useState('');
   const [phone,setPhone]=useState('');
+  const [projNum,setProjNum]=useState('');
+  const [projArea,setProjArea]=useState('');
+  const [projCulture,setProjCulture]=useState('');
+  const [projRegion,setProjRegion]=useState('');
+  const [projWater,setProjWater]=useState('');
   const [logistika,setLogistika]=useState(0);
   const [shefMontazh,setShefMontazh]=useState(0);
   const [shefUnit,setShefUnit]=useState('га');
@@ -637,6 +718,8 @@ function KPApp(){
     if(!el||!window.html2canvas||!window.jspdf){ alert('Откройте предпросмотр и попробуйте снова'); return; }
     setPdfLoading(true);
     try{
+      // Дождаться загрузки шрифта Inter перед снимком
+      if(document.fonts&&document.fonts.ready){ try{ await document.fonts.ready; }catch(e){} }
       // Снимок предпросмотра в высоком разрешении
       const canvas=await window.html2canvas(el,{
         scale:2.5,
@@ -821,6 +904,7 @@ function KPApp(){
           <div id="kp-print-area" style={{background:'#fff',borderRadius:10,padding:'36px 44px',boxShadow:'0 2px 12px rgba(0,0,0,0.1)'}}>
             <PrintView sections={sections} kpNum={kpNum} kpDate={kpDate} typeCeny={typeCeny}
               zakazchik={zakazchik} object={object} ispolnitel={ispolnitel} phone={phone}
+              projNum={projNum} projArea={projArea} projCulture={projCulture} projRegion={projRegion} projWater={projWater}
               logN={logN} shefN={shefN} shefUnit={shefUnit} notes={notes} grand={grand} final={final}/>
           </div>
         </div>
@@ -904,6 +988,19 @@ function KPApp(){
               <div style={{gridColumn:'span 2'}}><label style={S.lbl}>Заказчик</label><input style={{...S.inp,width:'100%'}} value={zakazchik} onChange={e=>setZakazchik(e.target.value)} placeholder='ООО "Альминские холмы"'/></div>
               <div><label style={S.lbl}>Исполнитель</label><input style={{...S.inp,width:'100%'}} value={ispolnitel} onChange={e=>setIspolnitel(e.target.value)}/></div>
               <div><label style={S.lbl}>Телефон</label><input style={{...S.inp,width:'100%'}} value={phone} onChange={e=>setPhone(e.target.value)}/></div>
+            </div>
+          </div>
+
+          {/* Параметры проекта — для обложки */}
+          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)'}}>
+            <div style={{fontWeight:700,color:'#0B3A63',marginBottom:4,fontSize:14}}>🌾 Параметры проекта</div>
+            <div style={{fontSize:12,color:'#888',marginBottom:12}}>Показываются на обложке КП в виде карточек. Можно оставить пустыми.</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12}}>
+              <div><label style={S.lbl}>№ проекта</label><input style={{...S.inp,width:'100%'}} value={projNum} onChange={e=>setProjNum(e.target.value)} placeholder="НП-2026-001"/></div>
+              <div><label style={S.lbl}>Площадь</label><input style={{...S.inp,width:'100%'}} value={projArea} onChange={e=>setProjArea(e.target.value)} placeholder="42 га"/></div>
+              <div><label style={S.lbl}>Культура</label><input style={{...S.inp,width:'100%'}} value={projCulture} onChange={e=>setProjCulture(e.target.value)} placeholder="Виноград"/></div>
+              <div><label style={S.lbl}>Регион</label><input style={{...S.inp,width:'100%'}} value={projRegion} onChange={e=>setProjRegion(e.target.value)} placeholder="Воронеж"/></div>
+              <div><label style={S.lbl}>Источник воды</label><input style={{...S.inp,width:'100%'}} value={projWater} onChange={e=>setProjWater(e.target.value)} placeholder="Скважина"/></div>
             </div>
           </div>
 
