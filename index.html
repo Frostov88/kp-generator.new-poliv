@@ -17,10 +17,10 @@
   <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;background:#ecf5e8;color:#1a1a1a;min-height:100vh;-webkit-tap-highlight-color:transparent}
+    body{font-family:'Inter',Arial,sans-serif;background:#F8FAFC;color:#1D1D1F;min-height:100vh;-webkit-tap-highlight-color:transparent}
     input,select,textarea{font-size:16px!important;-webkit-appearance:none}
     ::-webkit-scrollbar{width:4px}
-    ::-webkit-scrollbar-thumb{background:#acd49a;border-radius:2px}
+    ::-webkit-scrollbar-thumb{background:#B8D4EA;border-radius:2px}
     @media print{.no-print{display:none!important}}
   </style>
 </head>
@@ -195,12 +195,12 @@ const newItem=(name='',unit='шт.',qty=0,cp=0,markup=30,srcId='',srcName='',art
 });
 
 const S={
-  inp:{border:'1px solid #c8ddb0',borderRadius:4,padding:'4px 7px',fontSize:13,outline:'none',background:'#fafffe',boxSizing:'border-box'},
-  lbl:{fontSize:11,color:'#666',fontWeight:600,display:'block',marginBottom:2},
+  inp:{border:'1px solid #E6EBF0',borderRadius:6,padding:'6px 10px',fontSize:13,outline:'none',background:'#FFFFFF',boxSizing:'border-box',fontFamily:'Inter,Arial,sans-serif',color:'#1D1D1F'},
+  lbl:{fontSize:11,color:'#6B7785',fontWeight:600,display:'block',marginBottom:3,letterSpacing:'0.2px'},
 };
 
 // ===================== EXCEL-STYLE NUMBER INPUT =====================
-function NumInput({ value, onChange, style, placeholder='0', decimals=2 }) {
+function NumInput({ value, onChange, style, placeholder='0', decimals=2, className='' }) {
   const [focused, setFocused] = useState(false);
   const [raw, setRaw] = useState('');
   const ref = useRef();
@@ -234,12 +234,13 @@ function NumInput({ value, onChange, style, placeholder='0', decimals=2 }) {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key==='Enter'||e.key==='Tab') ref.current?.blur();
+    if (e.key==='Tab') ref.current?.blur();
   };
 
   return (
     <input
       ref={ref}
+      className={className}
       value={focused ? raw : fmt(value)}
       onChange={handleChange}
       onFocus={handleFocus}
@@ -278,25 +279,25 @@ const ItemRow = React.memo(function ItemRow({ item, ii, secId, onUpdate, onDelet
           style={{...S.inp,width:44,textAlign:'center',padding:'2px 3px',fontSize:12}}/>
       </td>
       <td style={{padding:'2px 3px'}}>
-        <NumInput value={item.qty||0} onChange={v=>onUpdate(secId,item.id,'qty',v)} decimals={0}
-          style={{...S.inp,width:72,padding:'2px 4px',background:'#f5faf3',fontSize:12,textAlign:'center'}}/>
+        <NumInput value={item.qty||0} onChange={v=>onUpdate(secId,item.id,'qty',v)} decimals={0} className="js-nav"
+          style={{...S.inp,width:72,padding:'2px 4px',background:'#F5F8FC',fontSize:12,textAlign:'center'}}/>
       </td>
       <td style={{padding:'2px 3px'}}>
-        <NumInput value={item.costPrice||0} onChange={v=>onUpdate(secId,item.id,'costPrice',v)} decimals={2}
-          style={{...S.inp,width:82,padding:'2px 4px',fontSize:12,background:item.costPrice>0?'#f0fff0':'#fafffe',border:item.costPrice>0?'1px solid #8bc34a':'1px solid #c8ddb0'}}/>
+        <NumInput value={item.costPrice||0} onChange={v=>onUpdate(secId,item.id,'costPrice',v)} decimals={2} className="js-nav"
+          style={{...S.inp,width:82,padding:'2px 4px',fontSize:12,background:item.costPrice>0?'#F0F7FF':'#FAFCFE',border:item.costPrice>0?'1px solid #7FAF4D':'1px solid #E6EBF0'}}/>
       </td>
       <td style={{padding:'2px 3px'}}>
         <div style={{display:'flex',alignItems:'center',gap:1}}>
-          <NumInput value={item.markup||0} onChange={v=>onUpdate(secId,item.id,'markup',v)} decimals={0}
-            style={{...S.inp,width:44,padding:'2px 3px',background:'#fffdf0',border:'1px solid #f39c12',color:'#d07000',fontWeight:700,fontSize:12,textAlign:'center'}}/>
+          <NumInput value={item.markup||0} onChange={v=>onUpdate(secId,item.id,'markup',v)} decimals={0} className="js-nav"
+            style={{...S.inp,width:44,padding:'2px 3px',background:'#FFF8E8',border:'1px solid #f39c12',color:'#d07000',fontWeight:700,fontSize:12,textAlign:'center'}}/>
           <span style={{fontSize:10,color:'#d07000'}}>%</span>
         </div>
       </td>
       <td style={{padding:'2px 3px'}}>
-        <NumInput value={item.price||0} onChange={v=>onUpdate(secId,item.id,'price',v)} decimals={2}
-          style={{...S.inp,width:88,padding:'2px 4px',fontSize:12,fontWeight:600,color:'#2d6622',border:warn?'1px solid #f39c12':'1px solid #3a7d2c',background:warn?'#fffdf0':'#f0fff8'}}/>
+        <NumInput value={item.price||0} onChange={v=>onUpdate(secId,item.id,'price',v)} decimals={2} className="js-nav"
+          style={{...S.inp,width:88,padding:'2px 4px',fontSize:12,fontWeight:600,color:'#0B3A63',border:warn?'1px solid #f39c12':'1px solid #2C7FB8',background:warn?'#FFF8E8':'#F0F7FF'}}/>
       </td>
-      <td style={{padding:'2px 7px',textAlign:'right',fontWeight:600,color:sum>0?'#2d6622':'#ddd',whiteSpace:'nowrap',fontSize:12}}>
+      <td style={{padding:'2px 7px',textAlign:'right',fontWeight:600,color:sum>0?'#0B3A63':'#ddd',whiteSpace:'nowrap',fontSize:12}}>
         {sum>0?sum.toLocaleString('ru-RU'):'—'}
       </td>
       <td style={{padding:'2px 3px',textAlign:'center'}}>
@@ -348,15 +349,15 @@ const SectionBlock = React.memo(function SectionBlock({
   },[]);
 
   return (
-    <div style={{background:'#fff',borderRadius:10,marginBottom:10,boxShadow:'0 1px 4px rgba(0,0,0,0.07)',overflow:'visible'}}>
+    <div style={{background:'#fff',borderRadius:10,marginBottom:10,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0',overflow:'visible'}}>
       {/* Header */}
-      <div style={{background:'#e8f3e4',padding:'9px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',borderBottom:collapsed?'none':'1px solid #c8ddb0',borderRadius:collapsed?10:'10px 10px 0 0'}}
+      <div style={{background:'#EEF4FA',padding:'10px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',borderBottom:collapsed?'none':'1px solid #E6EBF0',borderRadius:collapsed?10:'10px 10px 0 0'}}
         onClick={()=>setCollapsed(c=>!c)}>
-        <span style={{fontSize:12,userSelect:'none'}}>{collapsed?'▶':'▼'}</span>
-        <span style={{flex:1,fontWeight:700,fontSize:14,color:'#1a4d10'}}>{sec.title}</span>
-        {noPrice>0&&<span style={{fontSize:11,background:'#ffe082',color:'#7d5a00',borderRadius:10,padding:'2px 8px'}}>⚠ {noPrice} без цены</span>}
-        <span style={{fontSize:12,color:'#666'}}>{sec.items.length} поз.</span>
-        <span style={{fontSize:13,fontWeight:700,color:'#2d6622',minWidth:120,textAlign:'right'}}>{st>0?st.toLocaleString('ru-RU')+' ₽':'—'}</span>
+        <span style={{fontSize:12,userSelect:'none',color:'#2C7FB8'}}>{collapsed?'▶':'▼'}</span>
+        <span style={{flex:1,fontWeight:600,fontSize:14,color:'#0B3A63'}}>{sec.title}</span>
+        {noPrice>0&&<span style={{fontSize:11,background:'#FFF3D6',color:'#8a6d00',borderRadius:10,padding:'2px 8px'}}>⚠ {noPrice} без цены</span>}
+        <span style={{fontSize:12,color:'#6B7785'}}>{sec.items.length} поз.</span>
+        <span style={{fontSize:13,fontWeight:700,color:'#0B3A63',minWidth:120,textAlign:'right'}}>{st>0?st.toLocaleString('ru-RU')+' ₽':'—'}</span>
       </div>
 
       {!collapsed&&(
@@ -365,21 +366,21 @@ const SectionBlock = React.memo(function SectionBlock({
           <div style={{overflowX:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5,minWidth:900}}>
               <thead>
-                <tr style={{background:'#f5faf3',borderBottom:'1px solid #dff0d8'}}>
-                  <th style={{padding:'5px 7px',color:'#888',width:26,textAlign:'center',fontSize:11}}>#</th>
-                  <th style={{padding:'5px 7px',color:'#888',textAlign:'left',fontSize:11}}>Наименование</th>
-                  <th style={{padding:'5px 4px',color:'#888',width:50,textAlign:'center',fontSize:11}}>Ед.</th>
-                  <th style={{padding:'5px 4px',color:'#888',width:80,textAlign:'center',fontSize:11}}>Кол-во</th>
-                  <th style={{padding:'5px 4px',color:'#777',width:92,textAlign:'right',fontSize:11}}>Закуп. ₽</th>
-                  <th style={{padding:'5px 4px',color:'#d07000',width:66,textAlign:'center',fontSize:11,fontWeight:700}}>Накр.%</th>
-                  <th style={{padding:'5px 4px',color:'#2d6622',width:98,textAlign:'right',fontSize:11,fontWeight:700}}>Цена кл. ₽</th>
-                  <th style={{padding:'5px 7px',color:'#888',width:98,textAlign:'right',fontSize:11}}>Сумма ₽</th>
+                <tr style={{background:'#F8FAFC',borderBottom:'2px solid #E6EBF0'}}>
+                  <th style={{padding:'8px 7px',color:'#6B7785',width:26,textAlign:'center',fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px'}}>#</th>
+                  <th style={{padding:'8px 7px',color:'#6B7785',textAlign:'left',fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px'}}>Наименование</th>
+                  <th style={{padding:'8px 4px',color:'#6B7785',width:50,textAlign:'center',fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px'}}>Ед.</th>
+                  <th style={{padding:'8px 4px',color:'#6B7785',width:80,textAlign:'center',fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px'}}>Кол-во</th>
+                  <th style={{padding:'8px 4px',color:'#6B7785',width:92,textAlign:'right',fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px'}}>Закуп. ₽</th>
+                  <th style={{padding:'8px 4px',color:'#B07A1E',width:66,textAlign:'center',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.4px'}}>Накр.%</th>
+                  <th style={{padding:'8px 4px',color:'#2C7FB8',width:98,textAlign:'right',fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.4px'}}>Цена кл. ₽</th>
+                  <th style={{padding:'8px 7px',color:'#6B7785',width:98,textAlign:'right',fontSize:10,textTransform:'uppercase',letterSpacing:'0.4px'}}>Сумма ₽</th>
                   <th style={{width:26}}></th>
                 </tr>
               </thead>
               <tbody>
                 {sec.items.length===0&&(
-                  <tr><td colSpan={9} style={{padding:'14px',textAlign:'center',color:'#ccc'}}>
+                  <tr><td colSpan={9} style={{padding:'14px',textAlign:'center',color:'#B8C2CC'}}>
                     — нет позиций. Используйте поиск ниже или кнопку «+ Строка» —
                   </td></tr>
                 )}
@@ -393,15 +394,15 @@ const SectionBlock = React.memo(function SectionBlock({
 
           {/* Hot items */}
           {hot.length>0&&(
-            <div style={{padding:'7px 12px',borderTop:'1px solid #eef5ea',background:'#fafdf8'}}>
-              <div style={{fontSize:11,color:'#888',fontWeight:600,marginBottom:5}}>⭐ Ходовые позиции:</div>
+            <div style={{padding:'7px 12px',borderTop:'1px solid #E6EBF0',background:'#F8FAFC'}}>
+              <div style={{fontSize:11,color:'#6B7785',fontWeight:600,marginBottom:5}}>⭐ Ходовые позиции:</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
                 {hot.map((h,i)=>{
                   const key=(h.a||h.n||'').slice(0,40);
                   return(
                     <div key={i} style={{display:'flex',alignItems:'center',gap:1}}>
                       <button onClick={()=>onAddFromSearch(sec.id,h)}
-                        style={{padding:'3px 8px',background:'#fff',border:'1px solid #acd49a',color:'#2d6622',borderRadius:12,cursor:'pointer',fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                        style={{padding:'3px 8px',background:'#fff',border:'1px solid #B8D4EA',color:'#0B3A63',borderRadius:12,cursor:'pointer',fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                         + {h.n.slice(0,22)}{h.a?` [${h.a.slice(0,8)}]`:''} <span style={{fontSize:9,opacity:.6}}>×{h.uc||1}</span>
                       </button>
                       <button onClick={()=>onRemoveHot(key)}
@@ -422,7 +423,7 @@ const SectionBlock = React.memo(function SectionBlock({
               <span style={{fontSize:11,color:'#888',fontWeight:600,marginRight:2}}>Прайс:</span>
               <button onClick={()=>setSrcFilter('all')}
                 style={{padding:'3px 10px',borderRadius:12,border:'none',cursor:'pointer',fontSize:11,fontWeight:600,
-                  background:srcFilter==='all'?'#2d6622':'#e8f3e4',color:srcFilter==='all'?'#fff':'#2d6622'}}>
+                  background:srcFilter==='all'?'#0B3A63':'#EEF4FA',color:srcFilter==='all'?'#fff':'#0B3A63'}}>
                 Все
               </button>
               {allSources.map(s=>(
@@ -436,12 +437,12 @@ const SectionBlock = React.memo(function SectionBlock({
               ))}
             </div>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              <span style={{fontSize:12,color:'#2d6622',fontWeight:700,whiteSpace:'nowrap'}}>🔍</span>
+              <span style={{fontSize:12,color:'#0B3A63',fontWeight:700,whiteSpace:'nowrap'}}>🔍</span>
               <input
                 value={q}
                 onChange={e=>setQ(e.target.value)}
                 placeholder={srcFilter==='all'?"Поиск по всем прайсам — название, артикул, код...":"Поиск в выбранном прайсе (пусто = весь прайс)"}
-                style={{...S.inp,flex:1,padding:'7px 12px',fontSize:14,border:'2px solid #3a7d2c',borderRadius:6}}
+                style={{...S.inp,flex:1,padding:'7px 12px',fontSize:14,border:'2px solid #2C7FB8',borderRadius:6}}
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck="false"
@@ -450,7 +451,7 @@ const SectionBlock = React.memo(function SectionBlock({
                 style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:20,lineHeight:1,padding:'0 4px'}}>✕</button>}
               {srcFilter!=='all'&&q.length<2&&(
                 <button onClick={()=>setRes([])}
-                  style={{background:'#e8f3e4',border:'1px solid #acd49a',color:'#2d6622',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:600,padding:'5px 10px',whiteSpace:'nowrap'}}>
+                  style={{background:'#EEF4FA',border:'1px solid #B8D4EA',color:'#0B3A63',borderRadius:5,cursor:'pointer',fontSize:11,fontWeight:600,padding:'5px 10px',whiteSpace:'nowrap'}}>
                   Закрыть прайс
                 </button>
               )}
@@ -461,19 +462,19 @@ const SectionBlock = React.memo(function SectionBlock({
               <div ref={dropdownRef} style={{
                 position:'absolute',left:12,right:12,top:'calc(100% - 2px)',
                 zIndex:1000,background:'#fff',
-                border:'2px solid #3a7d2c',borderTop:'1px solid #e0eed8',
+                border:'2px solid #2C7FB8',borderTop:'1px solid #E6EBF0',
                 borderRadius:'0 0 10px 10px',
                 boxShadow:'0 12px 32px rgba(0,0,0,0.18)',
                 maxHeight:420,overflowY:'auto'
               }}>
-                <div style={{padding:'6px 12px',background:'#f0f7eb',borderBottom:'1px solid #e0eed8',fontSize:11,color:'#666',position:'sticky',top:0}}>
+                <div style={{padding:'6px 12px',background:'#EEF4FA',borderBottom:'1px solid #E6EBF0',fontSize:11,color:'#666',position:'sticky',top:0}}>
                   {q.length<2&&srcFilter!=='all' ? `Весь прайс «${allSources.find(s=>s.id===srcFilter)?.name||''}» — ${res.length} позиций` : `Найдено ${res.length} позиций`} — кликните чтобы добавить
                 </div>
                 {res.map((r,i)=>(
                   <div key={i}
                     onMouseDown={e=>{ e.preventDefault(); onAddFromSearch(sec.id,r); if(q.length>=2){setQ('');} }}
                     style={{padding:'10px 14px',cursor:'pointer',borderBottom:'1px solid #f5f5f5',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}
-                    onMouseEnter={e=>e.currentTarget.style.background='#f0f7eb'}
+                    onMouseEnter={e=>e.currentTarget.style.background='#EEF4FA'}
                     onMouseLeave={e=>e.currentTarget.style.background='#fff'}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:500,lineHeight:1.3,marginBottom:3}}>{r.n}</div>
@@ -485,7 +486,7 @@ const SectionBlock = React.memo(function SectionBlock({
                     </div>
                     <div style={{textAlign:'right',whiteSpace:'nowrap',flexShrink:0}}>
                       <div style={{fontSize:12,color:'#777',marginBottom:2}}>закуп: <b>{r.p.toLocaleString('ru-RU')} ₽</b></div>
-                      <div style={{fontSize:13,color:'#2d6622',fontWeight:800}}>→ {Math.round(r.p*(1+globalMarkup/100)).toLocaleString('ru-RU')} ₽</div>
+                      <div style={{fontSize:13,color:'#0B3A63',fontWeight:800}}>→ {Math.round(r.p*(1+globalMarkup/100)).toLocaleString('ru-RU')} ₽</div>
                     </div>
                   </div>
                 ))}
@@ -496,10 +497,10 @@ const SectionBlock = React.memo(function SectionBlock({
           {/* Footer */}
           <div style={{padding:'7px 12px',display:'flex',justifyContent:'space-between',borderTop:'1px solid #eef5ea'}}>
             <button onClick={()=>onAddBlank(sec.id)}
-              style={{padding:'5px 14px',background:'#e8f3e4',border:'1px solid #acd49a',color:'#2d6622',borderRadius:5,cursor:'pointer',fontSize:12,fontWeight:600}}>
+              style={{padding:'5px 14px',background:'#EEF4FA',border:'1px solid #B8D4EA',color:'#0B3A63',borderRadius:5,cursor:'pointer',fontSize:12,fontWeight:600}}>
               + Строка
             </button>
-            <div style={{fontWeight:700,color:'#2d6622',fontSize:13}}>
+            <div style={{fontWeight:700,color:'#0B3A63',fontSize:13}}>
               Итого: {st>0?st.toLocaleString('ru-RU')+' ₽':'—'}
             </div>
           </div>
@@ -517,8 +518,8 @@ function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispol
   const grandFinal=final||grand;
   const eqTotal=sections.reduce((t,s)=>t+s.items.reduce((a,i)=>a+(i.qty||0)*(i.price||0),0),0);
 
-  // Палитра концепта
-  const PRIMARY='#0B3A63', SECOND='#2C7FB8', ACCENT='#3D8C2A', BG='#F8FAFC', TEXT='#1D1D1F', DIV='#D8DEE5', MUTED='#6B7785';
+  // Палитра концепта (синхронизирована с дизайн-системой PDF)
+  const PRIMARY='#0B3A63', SECOND='#2C7FB8', ACCENT='#7FAF4D', BG='#F8FAFC', TEXT='#1D1D1F', DIV='#E6EBF0', MUTED='#6B7785';
 
   // Карточки проекта — только заполненные
   const cards=[
@@ -710,74 +711,143 @@ function KPApp(){
   const [notes,setNotes]=useState('');
   const [sections,setSections]=useState(SECTIONS.map(d=>({...d,items:[]})));
   const [pdfLoading,setPdfLoading]=useState(false);
+  const [tgStatus,setTgStatus]=useState('idle'); // idle|sending|sent|need_start|not_telegram|error
+  const [tgError,setTgError]=useState('');
   const [viewPrice,setViewPrice]=useState(null);
   const printRef=useRef();
 
-  const savePDF=useCallback(async()=>{
+  // Генерация PDF из предпросмотра. Возвращает jsPDF doc (не сохраняет).
+  const buildPdf=useCallback(async()=>{
     const el=document.getElementById('kp-print-area');
-    if(!el||!window.html2canvas||!window.jspdf){ alert('Откройте предпросмотр и попробуйте снова'); return; }
+    if(!el||!window.html2canvas||!window.jspdf) throw new Error('Откройте предпросмотр');
+    if(document.fonts&&document.fonts.ready){ try{ await document.fonts.ready; }catch(e){} }
+    const canvas=await window.html2canvas(el,{scale:2.5,useCORS:true,backgroundColor:'#ffffff',logging:false,windowWidth:el.scrollWidth});
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    const pageW=210,pageH=297,margin=10;
+    const printW=pageW-margin*2, printH=pageH-margin*2;
+    const pagePx=Math.floor((printH/printW)*canvas.width);
+    let renderedPx=0,pageNum=0;
+    while(renderedPx<canvas.height){
+      const sliceH=Math.min(pagePx,canvas.height-renderedPx);
+      const slice=document.createElement('canvas');
+      slice.width=canvas.width; slice.height=sliceH;
+      const ctx=slice.getContext('2d');
+      ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,slice.width,slice.height);
+      ctx.drawImage(canvas,0,renderedPx,canvas.width,sliceH,0,0,canvas.width,sliceH);
+      const sliceImg=slice.toDataURL('image/jpeg',0.95);
+      const sliceMmH=(sliceH*printW)/canvas.width;
+      if(pageNum>0) pdf.addPage();
+      pdf.addImage(sliceImg,'JPEG',margin,margin,printW,sliceMmH);
+      renderedPx+=sliceH; pageNum++;
+    }
+    return pdf;
+  },[]);
+
+  // Локальное скачивание PDF («Скачать повторно»)
+  const savePDF=useCallback(async()=>{
     setPdfLoading(true);
     try{
-      // Дождаться загрузки шрифта Inter перед снимком
-      if(document.fonts&&document.fonts.ready){ try{ await document.fonts.ready; }catch(e){} }
-      // Снимок предпросмотра в высоком разрешении
-      const canvas=await window.html2canvas(el,{
-        scale:2.5,
-        useCORS:true,
-        backgroundColor:'#ffffff',
-        logging:false,
-        windowWidth:el.scrollWidth,
-      });
-
-      const {jsPDF}=window.jspdf;
-      const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-      const pageW=210, pageH=297;
-      const margin=10;
-      const printW=pageW-margin*2;          // 190 мм
-      const printH=pageH-margin*2;          // 277 мм
-      const imgH=(canvas.height*printW)/canvas.width; // высота снимка в мм при ширине printW
-
-      // Сколько пикселей оригинала помещается на одну печатную страницу
-      const pagePx=Math.floor((printH/printW)*canvas.width);
-
-      let renderedPx=0;
-      let pageNum=0;
-      while(renderedPx<canvas.height){
-        const sliceH=Math.min(pagePx, canvas.height-renderedPx);
-
-        // Вырезаем кусок снимка
-        const slice=document.createElement('canvas');
-        slice.width=canvas.width;
-        slice.height=sliceH;
-        const ctx=slice.getContext('2d');
-        ctx.fillStyle='#ffffff';
-        ctx.fillRect(0,0,slice.width,slice.height);
-        ctx.drawImage(canvas,0,renderedPx,canvas.width,sliceH,0,0,canvas.width,sliceH);
-
-        const sliceImg=slice.toDataURL('image/jpeg',0.95);
-        const sliceMmH=(sliceH*printW)/canvas.width;
-
-        if(pageNum>0) pdf.addPage();
-        pdf.addImage(sliceImg,'JPEG',margin,margin,printW,sliceMmH);
-
-        renderedPx+=sliceH;
-        pageNum++;
-      }
-
+      const pdf=await buildPdf();
       const slug=(zakazchik||'КП').replace(/[^\wа-яёА-ЯЁ]/g,'_').replace(/_+/g,'_').slice(0,20);
       pdf.save('КП_'+slug+'_'+kpDate+'.pdf');
-    }catch(err){
-      console.error('PDF error:',err);
-      alert('Ошибка создания PDF: '+err.message);
-    }
+    }catch(err){ console.error('PDF error:',err); alert('Ошибка создания PDF: '+err.message); }
     setPdfLoading(false);
-  },[zakazchik,kpDate,kpNum,typeCeny,object,ispolnitel,phone,sections,notes,grand,logN,shefN,shefUnit,final]);
+  },[buildPdf,zakazchik,kpDate]);
+
+  // Отправка PDF в Telegram через backend
+  const sendToTelegram=useCallback(async()=>{
+    setTgStatus('sending');
+    try{
+      const pdf=await buildPdf();
+      const base64=pdf.output('datauristring'); // data:application/pdf;base64,...
+      const tg=window.Telegram&&window.Telegram.WebApp;
+      const initData=tg?tg.initData:'';
+      if(!initData){
+        // Не в Telegram — fallback на скачивание
+        const slug=(zakazchik||'КП').replace(/[^\wа-яёА-ЯЁ]/g,'_').replace(/_+/g,'_').slice(0,20);
+        pdf.save('КП_'+slug+'_'+kpDate+'.pdf');
+        setTgStatus('not_telegram');
+        return;
+      }
+      const resp=await fetch(BACKEND_URL+'/generate-pdf',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ initData, pdfBase64:base64, client:zakazchik, date:kpDate }),
+      });
+      const data=await resp.json();
+      if(data.success&&data.telegram_sent){
+        setTgStatus('sent');
+      }else if(data.need_start){
+        setTgStatus('need_start');
+      }else{
+        setTgStatus('error');
+        setTgError(data.error||'Неизвестная ошибка');
+      }
+    }catch(err){
+      console.error('TG send error:',err);
+      setTgStatus('error');
+      setTgError(err.message);
+    }
+  },[buildPdf,zakazchik,kpDate]);
 
   const rtfRef=useRef(), xlsxRef=useRef();
 
   // Hot items storage
   useEffect(()=>{
     try{ window.storage.get('np_hot2').then(r=>{if(r?.value)setHotItems(JSON.parse(r.value));}).catch(()=>{}); }catch(e){}
+  },[]);
+
+  // Навигация по ячейкам цены/количества стрелками и Enter (как в Excel)
+  useEffect(()=>{
+    const handler=(e)=>{
+      const el=e.target;
+      if(!(el instanceof HTMLInputElement) || !el.classList.contains('js-nav')) return;
+      const k=e.key;
+      if(k!=='Enter'&&k!=='ArrowDown'&&k!=='ArrowUp'&&k!=='ArrowLeft'&&k!=='ArrowRight') return;
+      // Для влево/вправо двигаемся к соседней ячейке только если курсор у края текста
+      const len=el.value.length;
+      const atStart=el.selectionStart===0&&el.selectionEnd===0;
+      const atEnd=el.selectionStart===len&&el.selectionEnd===len;
+      if(k==='ArrowLeft'&&!atStart) return;
+      if(k==='ArrowRight'&&!atEnd) return;
+
+      const all=Array.from(document.querySelectorAll('input.js-nav')).filter(x=>x.offsetParent!==null);
+      const cur=el.getBoundingClientRect();
+      const tol=8;
+      const sameCol=r=>Math.abs(r.left-cur.left)<24;
+      const sameRow=r=>Math.abs(r.top-cur.top)<12;
+      const items=all.filter(x=>x!==el).map(x=>({x,r:x.getBoundingClientRect()}));
+      let pool=[],target=null;
+
+      if(k==='Enter'||k==='ArrowDown'){
+        pool=items.filter(o=>o.r.top>cur.top+tol);
+        const col=pool.filter(o=>sameCol(o.r));
+        pool=col.length?col:pool;
+        pool.sort((a,b)=>(a.r.top-b.r.top)||(Math.abs(a.r.left-cur.left)-Math.abs(b.r.left-cur.left)));
+        target=pool[0]&&pool[0].x;
+      }else if(k==='ArrowUp'){
+        pool=items.filter(o=>o.r.top<cur.top-tol);
+        const col=pool.filter(o=>sameCol(o.r));
+        pool=col.length?col:pool;
+        pool.sort((a,b)=>(b.r.top-a.r.top)||(Math.abs(a.r.left-cur.left)-Math.abs(b.r.left-cur.left)));
+        target=pool[0]&&pool[0].x;
+      }else if(k==='ArrowRight'){
+        pool=items.filter(o=>sameRow(o.r)&&o.r.left>cur.left+tol).sort((a,b)=>a.r.left-b.r.left);
+        target=pool[0]&&pool[0].x;
+      }else if(k==='ArrowLeft'){
+        pool=items.filter(o=>sameRow(o.r)&&o.r.left<cur.left-tol).sort((a,b)=>b.r.left-a.r.left);
+        target=pool[0]&&pool[0].x;
+      }
+      if(target){
+        e.preventDefault();
+        e.stopPropagation();
+        target.focus();
+        try{ target.select(); }catch(_){}
+      }
+    };
+    document.addEventListener('keydown',handler,true);
+    return ()=>document.removeEventListener('keydown',handler,true);
   },[]);
   const saveHot=useCallback(items=>{
     try{ window.storage.set('np_hot2',JSON.stringify(items)).catch(()=>{}); }catch(e){}
@@ -878,27 +948,27 @@ function KPApp(){
   ];
 
   return(
-    <div style={{minHeight:'100vh',background:'#ecf5e8',fontFamily:'Arial,sans-serif'}}>
+    <div style={{minHeight:'100vh',background:'#F8FAFC',fontFamily:'Inter,Arial,sans-serif'}}>
       {/* Topbar */}
-      <div style={{background:'#2d6622',color:'#fff',padding:'10px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 8px rgba(0,0,0,0.2)'}}>
+      <div style={{background:'#0B3A63',color:'#fff',padding:'12px 22px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:100,boxShadow:'0 1px 12px rgba(11,58,99,0.25)'}}>
         <div>
-          <div style={{fontWeight:800,fontSize:16}}>💧 Новый Полив — Генератор КП</div>
-          <div style={{fontSize:11,opacity:.7}}>База: {totalCat.toLocaleString()} позиций{totalExtra>0?` (+${totalExtra} доп.)`:''}</div>
+          <div style={{fontWeight:600,fontSize:16,letterSpacing:'-0.2px'}}>Новый Полив · Генератор КП</div>
+          <div style={{fontSize:11,opacity:.65,marginTop:1}}>База: {totalCat.toLocaleString()} позиций{totalExtra>0?` (+${totalExtra} доп.)`:''}</div>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <span style={{fontSize:13,opacity:.85}}>Итого: <b>{final.toLocaleString('ru-RU')} ₽</b></span>
-          <button onClick={()=>setView('edit')} style={{padding:'6px 14px',borderRadius:5,border:'none',cursor:'pointer',fontWeight:600,fontSize:13,background:view==='edit'?'#fff':'rgba(255,255,255,0.2)',color:view==='edit'?'#2d6622':'#fff'}}>✏️ Редактор</button>
-          <button onClick={()=>setView('preview')} style={{padding:'6px 14px',borderRadius:5,border:'none',cursor:'pointer',fontWeight:600,fontSize:13,background:view==='preview'?'#fff':'rgba(255,255,255,0.2)',color:view==='preview'?'#2d6622':'#fff'}}>👁 PDF</button>
+          <span style={{fontSize:13,opacity:.85,marginRight:4}}>Итого: <b style={{color:'#9FD0F0'}}>{final.toLocaleString('ru-RU')} ₽</b></span>
+          <button onClick={()=>setView('edit')} style={{padding:'7px 16px',borderRadius:6,border:'none',cursor:'pointer',fontWeight:600,fontSize:13,background:view==='edit'?'#fff':'rgba(255,255,255,0.15)',color:view==='edit'?'#0B3A63':'#fff'}}>Редактор</button>
+          <button onClick={()=>setView('preview')} style={{padding:'7px 16px',borderRadius:6,border:'none',cursor:'pointer',fontWeight:600,fontSize:13,background:view==='preview'?'#fff':'rgba(255,255,255,0.15)',color:view==='preview'?'#0B3A63':'#fff'}}>Предпросмотр</button>
         </div>
       </div>
 
       {view==='preview'?(
         <div style={{maxWidth:900,margin:'0 auto',padding:24}}>
           <div style={{display:'flex',gap:10,marginBottom:16}}>
-            <button onClick={()=>setView('edit')} style={{padding:'8px 18px',border:'1px solid #2d6622',background:'#fff',color:'#2d6622',borderRadius:5,cursor:'pointer',fontWeight:600}}>← Назад</button>
+            <button onClick={()=>setView('edit')} style={{padding:'9px 20px',border:'1px solid #E6EBF0',background:'#fff',color:'#0B3A63',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:14}}>← Назад</button>
             <button onClick={savePDF} disabled={pdfLoading}
-              style={{padding:'8px 22px',background:pdfLoading?'#5a9a47':'#2d6622',color:'#fff',border:'none',borderRadius:5,cursor:pdfLoading?'wait':'pointer',fontWeight:700,fontSize:14,minWidth:180}}>
-              {pdfLoading ? '⏳ Создаётся PDF...' : '⬇️ Скачать PDF'}
+              style={{padding:'9px 24px',background:pdfLoading?'#5681a8':'#0B3A63',color:'#fff',border:'none',borderRadius:8,cursor:pdfLoading?'wait':'pointer',fontWeight:600,fontSize:14,minWidth:180}}>
+              {pdfLoading ? 'Создаётся PDF…' : 'Скачать PDF'}
             </button>
           </div>
           <div id="kp-print-area" style={{background:'#fff',borderRadius:10,padding:'36px 44px',boxShadow:'0 2px 12px rgba(0,0,0,0.1)'}}>
@@ -912,8 +982,8 @@ function KPApp(){
         <div style={{maxWidth:1200,margin:'0 auto',padding:'20px 16px'}}>
 
           {/* Прайсы */}
-          <div style={{background:'#fff',borderRadius:10,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)'}}>
-            <div style={{fontWeight:700,color:'#2d6622',marginBottom:6,fontSize:14}}>📚 Встроенные прайсы</div>
+          <div style={{background:'#fff',borderRadius:10,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
+            <div style={{fontWeight:700,color:'#0B3A63',marginBottom:6,fontSize:14}}>📚 Встроенные прайсы</div>
             <div style={{fontSize:11,color:'#999',marginBottom:10}}>Кликните на прайс чтобы посмотреть все позиции и цены</div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
               {Object.entries(BUILTIN_CATALOGS).map(([id,src])=>(
@@ -925,12 +995,12 @@ function KPApp(){
             </div>
             <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
               <input ref={xlsxRef} type="file" accept=".xlsx,.xls" multiple style={{display:'none'}} onChange={handleXLSX}/>
-              <button onClick={()=>xlsxRef.current.click()} style={{padding:'7px 16px',background:'#e8f3e4',border:'1px solid #acd49a',color:'#2d6622',borderRadius:6,cursor:'pointer',fontWeight:600,fontSize:13}}>
+              <button onClick={()=>xlsxRef.current.click()} style={{padding:'7px 16px',background:'#EEF4FA',border:'1px solid #B8D4EA',color:'#0B3A63',borderRadius:6,cursor:'pointer',fontWeight:600,fontSize:13}}>
                 + Добавить доп. прайс
               </button>
               {Object.entries(extraCatalogs).map(([id,src])=>(
-                <div key={id} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',background:'#f0f7eb',borderRadius:16,fontSize:12}}>
-                  <span style={{fontWeight:600,color:'#2d6622'}}>{src.name} ({src.items.length})</span>
+                <div key={id} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',background:'#EEF4FA',borderRadius:16,fontSize:12}}>
+                  <span style={{fontWeight:600,color:'#0B3A63'}}>{src.name} ({src.items.length})</span>
                   <button onClick={()=>setExtraCatalogs(p=>{const n={...p};delete n[id];return n;})}
                     style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:14}}
                     onMouseEnter={e=>e.currentTarget.style.color='#e74c3c'}
@@ -941,9 +1011,9 @@ function KPApp(){
           </div>
 
           {/* Накрутка */}
-          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)'}}>
+          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
             <div style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
-              <div style={{fontWeight:700,color:'#d07000',fontSize:14}}>📈 Глобальная накрутка:</div>
+              <div style={{fontWeight:700,color:'#d07000',fontSize:14}}>Глобальная накрутка</div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <NumInput value={globalMarkup} onChange={setGlobalMarkup} decimals={0}
                   style={{...S.inp,width:70,fontSize:18,fontWeight:800,color:'#d07000',border:'2px solid #f39c12',padding:'4px 6px',textAlign:'center'}}/>
@@ -953,24 +1023,24 @@ function KPApp(){
                 </button>
               </div>
               <div style={{display:'flex',gap:6}}>
-                <button onClick={()=>setPriceType('opt')} style={{padding:'5px 12px',borderRadius:4,border:'none',cursor:'pointer',fontWeight:600,fontSize:12,background:priceType==='opt'?'#2d6622':'#e8f3e4',color:priceType==='opt'?'#fff':'#2d6622'}}>База: Опт</button>
-                <button onClick={()=>setPriceType('retail')} style={{padding:'5px 12px',borderRadius:4,border:'none',cursor:'pointer',fontWeight:600,fontSize:12,background:priceType==='retail'?'#2d6622':'#e8f3e4',color:priceType==='retail'?'#fff':'#2d6622'}}>База: Розница</button>
+                <button onClick={()=>setPriceType('opt')} style={{padding:'5px 12px',borderRadius:4,border:'none',cursor:'pointer',fontWeight:600,fontSize:12,background:priceType==='opt'?'#0B3A63':'#e8f3e4',color:priceType==='opt'?'#fff':'#0B3A63'}}>База: Опт</button>
+                <button onClick={()=>setPriceType('retail')} style={{padding:'5px 12px',borderRadius:4,border:'none',cursor:'pointer',fontWeight:600,fontSize:12,background:priceType==='retail'?'#0B3A63':'#e8f3e4',color:priceType==='retail'?'#fff':'#0B3A63'}}>База: Розница</button>
               </div>
-              <div style={{fontSize:12,color:'#666',background:'#f0f7eb',padding:'6px 12px',borderRadius:6}}>
-                1 000 ₽ → <b style={{color:'#2d6622'}}>{Math.round(1000*(1+globalMarkup/100)).toLocaleString()} ₽</b>
+              <div style={{fontSize:12,color:'#666',background:'#EEF4FA',padding:'6px 12px',borderRadius:6}}>
+                1 000 ₽ → <b style={{color:'#0B3A63'}}>{Math.round(1000*(1+globalMarkup/100)).toLocaleString()} ₽</b>
               </div>
             </div>
           </div>
 
           {/* RTF */}
-          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)',border:rtfStatus==='ok'?'2px solid #3a7d2c':'2px dashed #a8d498'}}>
+          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)',border:rtfStatus==='ok'?'2px solid #2C7FB8':'2px dashed #B8D4EA'}}>
             <div style={{display:'flex',alignItems:'center',gap:14}}>
               <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:14,color:'#2d6622'}}>📐 RTF из Irricad — опционально</div>
+                <div style={{fontWeight:700,fontSize:14,color:'#0B3A63'}}>📐 RTF из Irricad — опционально</div>
                 <div style={{fontSize:13,color:'#666',marginTop:2}}>Позиции и количество подтянутся автоматически. Цены проставьте через поиск или вручную.</div>
               </div>
               <input ref={rtfRef} type="file" accept=".rtf" style={{display:'none'}} onChange={handleRTF}/>
-              <button onClick={()=>rtfRef.current.click()} style={{padding:'8px 18px',background:rtfStatus==='ok'?'#5a9a47':'#3a7d2c',color:'#fff',border:'none',borderRadius:6,cursor:'pointer',fontWeight:700}}>
+              <button onClick={()=>rtfRef.current.click()} style={{padding:'8px 18px',background:rtfStatus==='ok'?'#5a9a47':'#2C7FB8',color:'#fff',border:'none',borderRadius:6,cursor:'pointer',fontWeight:700}}>
                 {rtfStatus==='ok'?'✅ Загружен':'📂 Выбрать RTF'}
               </button>
             </div>
@@ -978,8 +1048,8 @@ function KPApp(){
           </div>
 
           {/* Реквизиты */}
-          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)'}}>
-            <div style={{fontWeight:700,color:'#2d6622',marginBottom:12,fontSize:14}}>📄 Реквизиты КП</div>
+          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
+            <div style={{fontWeight:700,color:'#0B3A63',marginBottom:12,fontSize:14}}>Реквизиты КП</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
               <div><label style={S.lbl}>Номер КП</label><input style={{...S.inp,width:'100%'}} value={kpNum} onChange={e=>setKpNum(e.target.value)} placeholder="КП-001"/></div>
               <div><label style={S.lbl}>Дата</label><input style={{...S.inp,width:'100%'}} type="date" value={kpDate} onChange={e=>setKpDate(e.target.value)}/></div>
@@ -991,16 +1061,24 @@ function KPApp(){
             </div>
           </div>
 
-          {/* Параметры проекта — для обложки */}
-          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)'}}>
-            <div style={{fontWeight:700,color:'#0B3A63',marginBottom:4,fontSize:14}}>🌾 Параметры проекта</div>
-            <div style={{fontSize:12,color:'#888',marginBottom:12}}>Показываются на обложке КП в виде карточек. Можно оставить пустыми.</div>
+          {/* Параметры проекта — карточки в стиле PDF */}
+          <div style={{background:'#fff',borderRadius:10,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
+            <div style={{fontWeight:600,color:'#0B3A63',marginBottom:4,fontSize:15,letterSpacing:'-0.2px'}}>Параметры проекта</div>
+            <div style={{fontSize:12,color:'#6B7785',marginBottom:14}}>Показываются на обложке КП в виде карточек. Можно оставить пустыми.</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12}}>
-              <div><label style={S.lbl}>№ проекта</label><input style={{...S.inp,width:'100%'}} value={projNum} onChange={e=>setProjNum(e.target.value)} placeholder="НП-2026-001"/></div>
-              <div><label style={S.lbl}>Площадь</label><input style={{...S.inp,width:'100%'}} value={projArea} onChange={e=>setProjArea(e.target.value)} placeholder="42 га"/></div>
-              <div><label style={S.lbl}>Культура</label><input style={{...S.inp,width:'100%'}} value={projCulture} onChange={e=>setProjCulture(e.target.value)} placeholder="Виноград"/></div>
-              <div><label style={S.lbl}>Регион</label><input style={{...S.inp,width:'100%'}} value={projRegion} onChange={e=>setProjRegion(e.target.value)} placeholder="Воронеж"/></div>
-              <div><label style={S.lbl}>Источник воды</label><input style={{...S.inp,width:'100%'}} value={projWater} onChange={e=>setProjWater(e.target.value)} placeholder="Скважина"/></div>
+              {[
+                {lbl:'№ проекта', val:projNum, set:setProjNum, ph:'НП-2026-001', acc:'#0B3A63'},
+                {lbl:'Площадь', val:projArea, set:setProjArea, ph:'42 га', acc:'#7FAF4D'},
+                {lbl:'Культура', val:projCulture, set:setProjCulture, ph:'Виноград', acc:'#2C7FB8'},
+                {lbl:'Регион', val:projRegion, set:setProjRegion, ph:'Воронеж', acc:'#7FAF4D'},
+                {lbl:'Источник воды', val:projWater, set:setProjWater, ph:'Скважина', acc:'#2C7FB8'},
+              ].map((c,i)=>(
+                <div key={i} style={{position:'relative',border:'1px solid #E6EBF0',borderRadius:8,padding:'12px 12px 10px',overflow:'hidden',background:'#F8FAFC'}}>
+                  <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:c.acc}}></div>
+                  <label style={{fontSize:10,color:'#6B7785',textTransform:'uppercase',letterSpacing:'0.5px',fontWeight:600,display:'block',marginBottom:6}}>{c.lbl}</label>
+                  <input style={{...S.inp,width:'100%',fontWeight:600,color:'#0B3A63',border:'none',background:'transparent',padding:'2px 0',fontSize:15}} value={c.val} onChange={e=>c.set(e.target.value)} placeholder={c.ph}/>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1014,34 +1092,37 @@ function KPApp(){
           ))}
 
           {/* Логистика */}
-          <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)'}}>
-            <div style={{fontWeight:700,color:'#2d6622',marginBottom:12,fontSize:14}}>🚚 Логистика и монтаж</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14,alignItems:'end'}}>
+          <div style={{background:'#fff',borderRadius:10,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
+            <div style={{fontWeight:600,color:'#0B3A63',marginBottom:14,fontSize:15,letterSpacing:'-0.2px'}}>Логистика и монтаж</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1.2fr',gap:14,alignItems:'end'}}>
               <div><label style={S.lbl}>Логистика, ₽</label>
                 <NumInput value={logistika} onChange={setLogistika} decimals={2} placeholder="0" style={{...S.inp,width:'100%'}}/>
               </div>
               <div><label style={S.lbl}>Шеф-монтаж или монтаж, ₽</label>
                 <div style={{display:'flex',gap:6}}>
                   <NumInput value={shefMontazh} onChange={setShefMontazh} decimals={2} placeholder="0" style={{...S.inp,flex:1}}/>
-                  <select value={shefUnit} onChange={e=>setShefUnit(e.target.value)} style={{...S.inp,width:60}}><option>га</option><option>шт.</option><option>к-т.</option></select>
+                  <select value={shefUnit} onChange={e=>setShefUnit(e.target.value)} style={{...S.inp,width:64}}><option>га</option><option>шт.</option><option>к-т.</option></select>
                 </div>
               </div>
-              <div style={{background:'#e8f3e4',borderRadius:8,padding:'10px 14px'}}>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}><span>Оборудование:</span><span style={{fontWeight:600}}>{grand.toLocaleString('ru-RU')} ₽</span></div>
-                {logN>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}><span>Логистика:</span><span>{logN.toLocaleString('ru-RU')} ₽</span></div>}
-                {shefN>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}><span>Монтаж:</span><span>{shefN.toLocaleString('ru-RU')} ₽</span></div>}
-                <div style={{display:'flex',justifyContent:'space-between',fontWeight:800,fontSize:15,color:'#2d6622',borderTop:'1px solid #acd49a',paddingTop:6,marginTop:4}}><span>ИТОГО:</span><span>{final.toLocaleString('ru-RU')} ₽</span></div>
+              <div style={{background:'#0B3A63',borderRadius:10,padding:'14px 18px',color:'#fff'}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,opacity:.8}}><span>Оборудование</span><span style={{fontWeight:600}}>{grand.toLocaleString('ru-RU')} ₽</span></div>
+                {logN>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,opacity:.8}}><span>Логистика</span><span>{logN.toLocaleString('ru-RU')} ₽</span></div>}
+                {shefN>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,opacity:.8}}><span>Монтаж</span><span>{shefN.toLocaleString('ru-RU')} ₽</span></div>}
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',borderTop:'1px solid rgba(255,255,255,0.25)',paddingTop:8,marginTop:6}}>
+                  <span style={{fontSize:12,opacity:.85,textTransform:'uppercase',letterSpacing:'0.5px'}}>Итого</span>
+                  <span style={{fontWeight:700,fontSize:22,letterSpacing:'-0.5px'}}>{final.toLocaleString('ru-RU')} ₽</span>
+                </div>
               </div>
             </div>
-            <div style={{marginTop:12}}>
+            <div style={{marginTop:14}}>
               <label style={S.lbl}>Примечания</label>
               <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Условия, сроки, гарантия..."
-                style={{width:'100%',border:'1px solid #c8ddb0',borderRadius:5,padding:'7px 10px',fontSize:13,minHeight:55,boxSizing:'border-box',resize:'vertical',outline:'none'}}/>
+                style={{width:'100%',border:'1px solid #E6EBF0',borderRadius:6,padding:'8px 10px',fontSize:13,minHeight:55,boxSizing:'border-box',resize:'vertical',outline:'none',fontFamily:'Inter,Arial,sans-serif',color:'#1D1D1F'}}/>
             </div>
           </div>
 
-          <button onClick={()=>setView('preview')} style={{width:'100%',padding:14,background:'#2d6622',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:800,fontSize:16}}>
-            👁 Предпросмотр и PDF →
+          <button onClick={()=>setView('preview')} style={{width:'100%',padding:15,background:'#0B3A63',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontWeight:600,fontSize:16,letterSpacing:'-0.2px'}}>
+            Предпросмотр и PDF →
           </button>
         </div>
       )}
@@ -1086,7 +1167,7 @@ function KPApp(){
                       </div>
                     </div>
                     <div style={{textAlign:'right',whiteSpace:'nowrap'}}>
-                      <span style={{color:'#888',fontSize:12}}>опт: </span><b style={{color:'#2d6622'}}>{it.p.toLocaleString('ru-RU')} ₽</b>
+                      <span style={{color:'#888',fontSize:12}}>опт: </span><b style={{color:'#0B3A63'}}>{it.p.toLocaleString('ru-RU')} ₽</b>
                       {it.r>it.p&&<div style={{fontSize:11,color:'#aaa'}}>розн: {it.r.toLocaleString('ru-RU')} ₽</div>}
                     </div>
                   </div>
@@ -1097,7 +1178,7 @@ function KPApp(){
         );
       })()}
 
-      <style>{`input:focus,textarea:focus,select:focus{border-color:#3a7d2c!important;box-shadow:0 0 0 2px rgba(58,125,44,0.13)} @media print{.no-print{display:none!important}}`}</style>
+      <style>{`input:focus,textarea:focus,select:focus{border-color:#2C7FB8!important;box-shadow:0 0 0 2px rgba(44,127,184,0.15)} @media print{.no-print{display:none!important}}`}</style>
     </div>
   );
 }
