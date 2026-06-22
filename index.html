@@ -599,7 +599,7 @@ const SectionBlock = React.memo(function SectionBlock({
 });
 
 // ===================== PRINT VIEW — вне KPApp =====================
-function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispolnitel, phone, projNum, projArea, projCulture, projRegion, projWater, logN, shefN, shefUnit, notes, grand, final }) {
+function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispolnitel, phone, projNum, projArea, projCulture, projRegion, projWater, logN, montN, shefN, shefUnit, notes, grand, final }) {
   let row=0;
   const money=n=>{ n=parseFloat(n)||0; if(!n)return''; return n.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+'\u00A0\u20BD'; };
   const qtyF=n=>{ n=parseFloat(n)||0; if(!n)return''; return n%1===0?n.toLocaleString('ru-RU'):n.toLocaleString('ru-RU',{maximumFractionDigits:1}); };
@@ -731,27 +731,27 @@ function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispol
       </table>
 
       {/* ===== СТРУКТУРА СТОИМОСТИ ===== */}
-      {(logN>0||shefN>0)&&(<>
-        <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:30,letterSpacing:'-0.3px'}}>Структура стоимости</div>
-        <div style={{fontSize:12,color:MUTED,marginBottom:14}}>Распределение по статьям проекта</div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
-          <div style={{border:'1px solid '+DIV,borderRadius:6,padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
-            <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:MUTED}}></div>
-            <div style={{fontSize:10.5,color:MUTED,textTransform:'uppercase',letterSpacing:'0.5px',fontWeight:600}}>Оборудование</div>
-            <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:8,whiteSpace:'nowrap'}}>{money(eqTotal)}</div>
+      {(logN>0||montN>0||shefN>0)&&(()=>{
+        const costCards=[
+          {label:'Оборудование', val:eqTotal, color:MUTED},
+          ...(logN>0?[{label:'Логистика', val:logN, color:SECOND}]:[]),
+          ...(montN>0?[{label:'Монтаж', val:montN, color:ACCENT}]:[]),
+          ...(shefN>0?[{label:'Шеф-монтаж', val:shefN, color:'#7A4DAF'}]:[]),
+        ];
+        return(<>
+          <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:30,letterSpacing:'-0.3px'}}>Структура стоимости</div>
+          <div style={{fontSize:12,color:MUTED,marginBottom:14}}>Распределение по статьям проекта</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat('+costCards.length+',1fr)',gap:12}}>
+            {costCards.map((c,ci)=>(
+              <div key={ci} style={{border:'1px solid '+DIV,borderRadius:6,padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
+                <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:c.color}}></div>
+                <div style={{fontSize:10.5,color:MUTED,textTransform:'uppercase',letterSpacing:'0.5px',fontWeight:600}}>{c.label}</div>
+                <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:8,whiteSpace:'nowrap'}}>{money(c.val)}</div>
+              </div>
+            ))}
           </div>
-          <div style={{border:'1px solid '+DIV,borderRadius:6,padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
-            <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:SECOND}}></div>
-            <div style={{fontSize:10.5,color:MUTED,textTransform:'uppercase',letterSpacing:'0.5px',fontWeight:600}}>Логистика</div>
-            <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:8,whiteSpace:'nowrap'}}>{logN>0?money(logN):'—'}</div>
-          </div>
-          <div style={{border:'1px solid '+DIV,borderRadius:6,padding:'16px 16px 14px',position:'relative',overflow:'hidden'}}>
-            <div style={{position:'absolute',top:0,left:0,right:0,height:4,background:ACCENT}}></div>
-            <div style={{fontSize:10.5,color:MUTED,textTransform:'uppercase',letterSpacing:'0.5px',fontWeight:600}}>Монтаж ({shefUnit})</div>
-            <div style={{fontSize:18,fontWeight:600,color:PRIMARY,marginTop:8,whiteSpace:'nowrap'}}>{shefN>0?money(shefN):'—'}</div>
-          </div>
-        </div>
-      </>)}
+        </>);
+      })()}
 
       {/* ===== ИТОГ ===== */}
       <div style={{marginTop:18,background:PRIMARY,borderRadius:10,padding:'22px 26px',display:'flex',justifyContent:'space-between',alignItems:'center',color:'#fff'}}>
@@ -914,6 +914,18 @@ function reconstructPdfText(tc){
     .filter(Boolean).join('\n');
 }
 
+// Тумблер в стиле iOS
+function Toggle({on,onChange,label,sub}){
+  return (
+    <div onClick={()=>onChange(!on)} style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',userSelect:'none'}}>
+      <span role="switch" aria-checked={on} style={{position:'relative',flexShrink:0,width:44,height:26,borderRadius:13,background:on?'#34C759':'#E4E7EC',transition:'background .22s ease',boxShadow:'inset 0 0 0 1px rgba(0,0,0,0.04)'}}>
+        <span style={{position:'absolute',top:2,left:2,width:22,height:22,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 3px rgba(0,0,0,0.3)',transition:'transform .22s cubic-bezier(.4,.1,.3,1.3)',transform:on?'translateX(18px)':'translateX(0)'}}></span>
+      </span>
+      {label&&<span style={{fontSize:13,fontWeight:600,color:'#0B3A63'}}>{label}{sub&&<span style={{color:'#9aa',fontWeight:400}}> {sub}</span>}</span>}
+    </div>
+  );
+}
+
 // ===================== MAIN APP =====================
 function KPApp(){
   const [view,setView]=useState('edit');
@@ -937,8 +949,12 @@ function KPApp(){
   const [projRegion,setProjRegion]=useState('');
   const [projWater,setProjWater]=useState('');
   const [logistika,setLogistika]=useState(0);
+  const [montazh,setMontazh]=useState(0);
   const [shefMontazh,setShefMontazh]=useState(0);
   const [shefUnit,setShefUnit]=useState('га');
+  const [logOn,setLogOn]=useState(true);
+  const [montOn,setMontOn]=useState(true);
+  const [shefOn,setShefOn]=useState(true);
   const [notes,setNotes]=useState('');
   const [sections,setSections]=useState(SECTIONS.map(d=>({...d,items:[]})));
   const [pdfLoading,setPdfLoading]=useState(false);
@@ -1087,15 +1103,15 @@ function KPApp(){
   },[]);
   const [saveMsg,setSaveMsg]=useState('');
   const saveProject=useCallback(()=>{
-    const logN=parseFloat(logistika)||0, shefN=parseFloat(shefMontazh)||0;
+    const logN=logOn?(parseFloat(logistika)||0):0, montN=montOn?(parseFloat(montazh)||0):0, shefN=shefOn?(parseFloat(shefMontazh)||0):0;
     const eq=sections.reduce((t,s)=>t+s.items.reduce((a,i)=>a+(i.qty||0)*(i.price||0),0),0);
-    const total=eq+logN+shefN;
+    const total=eq+logN+montN+shefN;
     const itemCount=sections.reduce((t,s)=>t+s.items.filter(i=>i.name&&i.name.trim()&&(i.qty>0)).length,0);
     const proj={
       id:'p'+Date.now(), savedAt:new Date().toISOString(),
       kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,
       projNum,projArea,projCulture,projRegion,projWater,
-      logistika,shefMontazh,shefUnit,notes,globalMarkup,priceType,
+      logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,
       sections, total, itemCount,
     };
     setProjects(prev=>{ const next=[proj,...prev]; saveProjects(next); return next; });
@@ -1108,12 +1124,13 @@ function KPApp(){
     try{ const tg=window.Telegram&&window.Telegram.WebApp; if(tg&&tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success'); }catch(e){}
     setSaveMsg('Сохранено в базу ✓');
     setTimeout(()=>setSaveMsg(''),2000);
-  },[kpNum,kpSeq,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,shefMontazh,shefUnit,notes,globalMarkup,priceType,sections,saveProjects]);
+  },[kpNum,kpSeq,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,sections,saveProjects]);
   const loadProject=useCallback(p=>{
     setKpNum(p.kpNum||''); setKpDate(p.kpDate||new Date().toISOString().slice(0,10)); setTypeCeny(p.typeCeny||'Опт');
     setZakazchik(p.zakazchik||''); setObject(p.object||''); setIspolnitel(p.ispolnitel||''); setPhone(p.phone||'');
     setProjNum(p.projNum||''); setProjArea(p.projArea||''); setProjCulture(p.projCulture||''); setProjRegion(p.projRegion||''); setProjWater(p.projWater||'');
-    setLogistika(p.logistika||0); setShefMontazh(p.shefMontazh||0); setShefUnit(p.shefUnit||'га');
+    setLogistika(p.logistika||0); setMontazh(p.montazh||0); setShefMontazh(p.shefMontazh||0); setShefUnit(p.shefUnit||'га');
+    setLogOn(p.logOn!==false); setMontOn(p.montOn!==false); setShefOn(p.shefOn!==false);
     setNotes(p.notes||''); setGlobalMarkup(typeof p.globalMarkup==='number'?p.globalMarkup:30); setPriceType(p.priceType||'opt');
     setSections(Array.isArray(p.sections)&&p.sections.length?p.sections:SECTIONS.map(d=>({...d,items:[]})));
     setShowDb(false); setView('edit');
@@ -1131,7 +1148,7 @@ function KPApp(){
     setKpNum(fmtKpNum(kpSeq+1)); setKpDate(new Date().toISOString().slice(0,10)); setTypeCeny('Опт');
     setZakazchik(''); setObject(''); setIspolnitel(''); setPhone('');
     setProjNum(''); setProjArea(''); setProjCulture(''); setProjRegion(''); setProjWater('');
-    setLogistika(0); setShefMontazh(0); setShefUnit('га'); setNotes('');
+    setLogistika(0); setMontazh(0); setShefMontazh(0); setShefUnit('га'); setLogOn(true); setMontOn(true); setShefOn(true); setNotes('');
     setSections(SECTIONS.map(d=>({...d,items:[]})));
     setShowClear(false);
     setClearMsg('Все данные очищены'); setTimeout(()=>setClearMsg(''),2500);
@@ -1233,7 +1250,8 @@ function KPApp(){
           if(d.ispolnitel!=null)setIspolnitel(d.ispolnitel); if(d.phone!=null)setPhone(d.phone);
           if(d.projNum!=null)setProjNum(d.projNum); if(d.projArea!=null)setProjArea(d.projArea);
           if(d.projCulture!=null)setProjCulture(d.projCulture); if(d.projRegion!=null)setProjRegion(d.projRegion); if(d.projWater!=null)setProjWater(d.projWater);
-          if(d.logistika!=null)setLogistika(d.logistika); if(d.shefMontazh!=null)setShefMontazh(d.shefMontazh); if(d.shefUnit)setShefUnit(d.shefUnit);
+          if(d.logistika!=null)setLogistika(d.logistika); if(d.montazh!=null)setMontazh(d.montazh); if(d.shefMontazh!=null)setShefMontazh(d.shefMontazh); if(d.shefUnit)setShefUnit(d.shefUnit);
+          if(d.logOn!=null)setLogOn(d.logOn); if(d.montOn!=null)setMontOn(d.montOn); if(d.shefOn!=null)setShefOn(d.shefOn);
           if(d.notes!=null)setNotes(d.notes); if(typeof d.globalMarkup==='number')setGlobalMarkup(d.globalMarkup); if(d.priceType)setPriceType(d.priceType);
           if(Array.isArray(d.sections)&&d.sections.length)setSections(d.sections);
         }
@@ -1250,11 +1268,11 @@ function KPApp(){
   useEffect(()=>{
     if(!draftLoaded.current) return;
     const t=setTimeout(()=>{
-      const d={kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,shefMontazh,shefUnit,notes,globalMarkup,priceType,sections};
+      const d={kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,sections};
       STORE.set('np_draft',JSON.stringify(d));
     },700);
     return ()=>clearTimeout(t);
-  },[kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,shefMontazh,shefUnit,notes,globalMarkup,priceType,sections]);
+  },[kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,sections]);
 
   // Навигация по ячейкам цены/количества стрелками и Enter (как в Excel)
   useEffect(()=>{
@@ -1405,8 +1423,8 @@ function KPApp(){
 
   const secTotal=s=>s.items.reduce((t,i)=>t+(i.qty||0)*(i.price||0),0);
   const grand=sections.reduce((t,s)=>t+secTotal(s),0);
-  const logN=parseFloat(logistika)||0, shefN=parseFloat(shefMontazh)||0;
-  const final=grand+logN+shefN;
+  const logN=logOn?(parseFloat(logistika)||0):0, montN=montOn?(parseFloat(montazh)||0):0, shefN=shefOn?(parseFloat(shefMontazh)||0):0;
+  const final=grand+logN+montN+shefN;
   const totalBuiltin=Object.values(BUILTIN_CATALOGS).reduce((t,s)=>t+s.items.length,0);
   const totalExtra=Object.values(extraCatalogs).reduce((t,s)=>t+s.items.length,0);
   const totalCat=totalBuiltin+totalExtra+dynItems.length;
@@ -1447,7 +1465,7 @@ function KPApp(){
             <PrintView sections={sections} kpNum={kpNum} kpDate={kpDate} typeCeny={typeCeny}
               zakazchik={zakazchik} object={object} ispolnitel={ispolnitel} phone={phone}
               projNum={projNum} projArea={projArea} projCulture={projCulture} projRegion={projRegion} projWater={projWater}
-              logN={logN} shefN={shefN} shefUnit={shefUnit} notes={notes} grand={grand} final={final}/>
+              logN={logN} montN={montN} shefN={shefN} shefUnit={shefUnit} notes={notes} grand={grand} final={final}/>
           </div>
         </div>
       ):(
@@ -1510,10 +1528,18 @@ function KPApp(){
           <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
             <div style={{fontWeight:700,color:'#0B3A63',marginBottom:4,fontSize:14}}>📄 Заявка от заказчика</div>
             <div style={{fontSize:12,color:'#888',marginBottom:12}}>Загрузите заявку или готовое КП (DOCX, PDF, XLSX) — позиции и количество подтянутся автоматически. Если в файле есть цены и включён перенос — цены возьмутся из файла; иначе подставятся из прайсов, а ненайденное выделится жёлтым.</div>
-            <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#0B3A63',marginBottom:12,cursor:'pointer',userSelect:'none'}}>
-              <input type="checkbox" checked={usePrices} onChange={e=>setUsePrices(e.target.checked)} style={{width:16,height:16,cursor:'pointer'}}/>
-              Переносить цены из файла (если они там есть)
-            </label>
+            <div onClick={()=>setUsePrices(v=>!v)}
+              style={{display:'flex',alignItems:'center',gap:10,fontSize:13,color:'#0B3A63',marginBottom:12,cursor:'pointer',userSelect:'none',fontWeight:600}}>
+              <span role="switch" aria-checked={usePrices}
+                style={{position:'relative',flexShrink:0,width:44,height:26,borderRadius:13,
+                  background:usePrices?'#34C759':'#E4E7EC',transition:'background .22s ease',
+                  boxShadow:'inset 0 0 0 1px rgba(0,0,0,0.04)'}}>
+                <span style={{position:'absolute',top:2,left:2,width:22,height:22,borderRadius:'50%',background:'#fff',
+                  boxShadow:'0 1px 3px rgba(0,0,0,0.3)',transition:'transform .22s cubic-bezier(.4,.1,.3,1.3)',
+                  transform:usePrices?'translateX(18px)':'translateX(0)'}}></span>
+              </span>
+              <span>Переносить цены из файла <span style={{color:'#9aa',fontWeight:400}}>(если они там есть)</span></span>
+            </div>
             <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
               <input ref={reqRef} type="file" accept=".docx,.pdf,.xlsx,.xls" style={{display:'none'}} onChange={handleRequest}/>
               <button onClick={()=>reqRef.current.click()}
@@ -1613,23 +1639,30 @@ function KPApp(){
               extraCatalogs={mergedExtra} totalCatalogCount={totalCat} allSources={allSources}/>
           ))}
 
-          {/* Логистика */}
+          {/* Логистика и монтаж */}
           <div style={{background:'#fff',borderRadius:10,padding:18,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
             <div style={{fontWeight:600,color:'#0B3A63',marginBottom:14,fontSize:15,letterSpacing:'-0.2px'}}>Логистика и монтаж</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1.2fr',gap:14,alignItems:'end'}}>
-              <div><label style={S.lbl}>Логистика, ₽</label>
-                <NumInput value={logistika} onChange={setLogistika} decimals={2} placeholder="0" style={{...S.inp,width:'100%'}}/>
-              </div>
-              <div><label style={S.lbl}>Шеф-монтаж или монтаж, ₽</label>
-                <div style={{display:'flex',gap:6}}>
-                  <NumInput value={shefMontazh} onChange={setShefMontazh} decimals={2} placeholder="0" style={{...S.inp,flex:1}}/>
-                  <select value={shefUnit} onChange={e=>setShefUnit(e.target.value)} style={{...S.inp,width:64}}><option>га</option><option>шт.</option><option>к-т.</option></select>
-                </div>
+            <div style={{display:'grid',gridTemplateColumns:'1.3fr 1fr',gap:18,alignItems:'start'}}>
+              <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                {[
+                  {on:logOn,setOn:setLogOn,val:logistika,setVal:setLogistika,label:'Логистика'},
+                  {on:montOn,setOn:setMontOn,val:montazh,setVal:setMontazh,label:'Монтаж'},
+                  {on:shefOn,setOn:setShefOn,val:shefMontazh,setVal:setShefMontazh,label:'Шеф-монтаж'},
+                ].map((r,ri)=>(
+                  <div key={ri} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,opacity:r.on?1:0.55,transition:'opacity .2s'}}>
+                    <Toggle on={r.on} onChange={r.setOn} label={r.label}/>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <NumInput value={r.val} onChange={r.setVal} decimals={2} placeholder="0" style={{...S.inp,width:150,textAlign:'right',background:r.on?'#fff':'#F4F6F8'}}/>
+                      <span style={{color:'#6B7785',fontSize:13,fontWeight:600}}>₽</span>
+                    </div>
+                  </div>
+                ))}
               </div>
               <div style={{background:'#0B3A63',borderRadius:10,padding:'14px 18px',color:'#fff'}}>
                 <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,opacity:.8}}><span>Оборудование</span><span style={{fontWeight:600}}>{grand.toLocaleString('ru-RU')} ₽</span></div>
                 {logN>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,opacity:.8}}><span>Логистика</span><span>{logN.toLocaleString('ru-RU')} ₽</span></div>}
-                {shefN>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,opacity:.8}}><span>Монтаж</span><span>{shefN.toLocaleString('ru-RU')} ₽</span></div>}
+                {montN>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,opacity:.8}}><span>Монтаж</span><span>{montN.toLocaleString('ru-RU')} ₽</span></div>}
+                {shefN>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4,opacity:.8}}><span>Шеф-монтаж</span><span>{shefN.toLocaleString('ru-RU')} ₽</span></div>}
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',borderTop:'1px solid rgba(255,255,255,0.25)',paddingTop:8,marginTop:6}}>
                   <span style={{fontSize:12,opacity:.85,textTransform:'uppercase',letterSpacing:'0.5px'}}>Итого</span>
                   <span style={{fontWeight:700,fontSize:22,letterSpacing:'-0.5px'}}>{final.toLocaleString('ru-RU')} ₽</span>
