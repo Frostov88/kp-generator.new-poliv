@@ -204,6 +204,7 @@ const SECTIONS=[
 ];
 let uid=Date.now();
 const nid=()=>++uid;
+const fmtKpNum=n=>'КП-'+String(n).padStart(3,'0');
 
 const newItem=(name='',unit='шт.',qty=0,cp=0,markup=30,srcId='',srcName='',art='',code='')=>({
   id:nid(),name,unit,qty,costPrice:cp,markup,
@@ -270,12 +271,21 @@ function NumInput({ value, onChange, style, placeholder='0', decimals=2, classNa
 }
 
 // ===================== ITEM ROW — вне KPApp, стабильный компонент =====================
-const ItemRow = React.memo(function ItemRow({ item, ii, secId, onUpdate, onDelete, srcColor }) {
+const ItemRow = React.memo(function ItemRow({ item, ii, secId, onUpdate, onDelete, srcColor, onHandleDown, isDragging, dropLine }) {
   const sum = (item.qty||0) * (item.price||0);
   const warn = item.qty > 0 && item.price === 0;
+  const bg = isDragging ? '#EAF3FF' : (warn?'#fffef5':ii%2===0?'#fff':'#f8fdf6');
+  const dropShadow = dropLine==='top' ? 'inset 0 3px 0 0 #2C7FB8' : dropLine==='bottom' ? 'inset 0 -3px 0 0 #2C7FB8' : 'none';
   return (
-    <tr style={{background:warn?'#fffef5':ii%2===0?'#fff':'#f8fdf6',borderBottom:'1px solid #eef5ea'}}>
-      <td style={{padding:'2px 7px',color:'#ccc',fontSize:11,textAlign:'center'}}>{ii+1}</td>
+    <tr data-row-idx={ii} style={{background:bg,borderBottom:'1px solid #eef5ea',opacity:isDragging?0.35:1,boxShadow:dropShadow,transition:'opacity .12s, box-shadow .12s'}}>
+      <td style={{padding:'2px 4px',textAlign:'center'}}>
+        <div onPointerDown={e=>onHandleDown&&onHandleDown(ii,e)}
+          title="Перетащите, чтобы изменить порядок"
+          style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,cursor:'grab',touchAction:'none',userSelect:'none',color:'#B8C2CC',lineHeight:1}}>
+          <span style={{fontSize:11,letterSpacing:'-1px'}}>⠿</span>
+          <span style={{fontSize:11,color:'#ccc'}}>{ii+1}</span>
+        </div>
+      </td>
       <td style={{padding:'2px 5px'}}>
         <input
           value={item.name}
@@ -330,7 +340,7 @@ const ItemRow = React.memo(function ItemRow({ item, ii, secId, onUpdate, onDelet
 // ===================== SECTION BLOCK — вне KPApp =====================
 const SectionBlock = React.memo(function SectionBlock({
   sec, globalMarkup, priceType, hotItems,
-  onUpdate, onDelete, onAddBlank, onAddFromSearch, onRemoveHot,
+  onUpdate, onDelete, onAddBlank, onAddFromSearch, onRemoveHot, onMoveItem,
   extraCatalogs, totalCatalogCount, allSources
 }) {
   const [q, setQ] = useState('');
@@ -342,6 +352,44 @@ const SectionBlock = React.memo(function SectionBlock({
   const noPrice = sec.items.filter(i=>i.qty>0&&i.price===0).length;
   const hot = hotItems.slice(0,10);
   const [collapsed, setCollapsed] = useState(false);
+  // Перетаскивание строк для изменения порядка (мышь + касание) с парящей карточкой
+  const tbodyRef=useRef();
+  const [drag,setDrag]=useState(null); // {from,to,item} во время перетаскивания
+  const dragRef=useRef(null);
+  const posRef=useRef({x:0,y:0});
+  const cardRef=useRef(null);
+  const applyCardPos=()=>{ if(cardRef.current){ cardRef.current.style.transform='translate('+(posRef.current.x+14)+'px,'+(posRef.current.y-18)+'px) rotate(-1.5deg) scale(1.03)'; } };
+  useEffect(()=>{ if(drag) applyCardPos(); },[drag]);
+  const beginDrag=useCallback((idx,e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const cx=(e.touches&&e.touches[0])?e.touches[0].clientX:e.clientX;
+    const cy=(e.touches&&e.touches[0])?e.touches[0].clientY:e.clientY;
+    posRef.current={x:cx,y:cy};
+    dragRef.current={from:idx,to:idx};
+    setDrag({from:idx,to:idx,item:sec.items[idx]});
+    try{ document.body.style.cursor='grabbing'; document.body.style.userSelect='none'; }catch(_){}
+    const move=(ev)=>{
+      const y=(ev.touches&&ev.touches[0])?ev.touches[0].clientY:ev.clientY;
+      const x=(ev.touches&&ev.touches[0])?ev.touches[0].clientX:ev.clientX;
+      posRef.current={x,y}; applyCardPos();
+      const rows=tbodyRef.current?tbodyRef.current.querySelectorAll('tr[data-row-idx]'):[];
+      let to=rows.length;
+      for(const r of rows){
+        const rect=r.getBoundingClientRect();
+        if(y < rect.top+rect.height/2){ to=+r.getAttribute('data-row-idx'); break; }
+      }
+      if(dragRef.current && dragRef.current.to!==to){ dragRef.current={...dragRef.current,to}; setDrag(d=>d?{...d,to}:d); }
+    };
+    const up=()=>{
+      document.removeEventListener('pointermove',move);
+      document.removeEventListener('pointerup',up);
+      try{ document.body.style.cursor=''; document.body.style.userSelect=''; }catch(_){}
+      const d=dragRef.current; dragRef.current=null; setDrag(null);
+      if(d && d.from!==d.to) onMoveItem(sec.id, d.from, d.to);
+    };
+    document.addEventListener('pointermove',move);
+    document.addEventListener('pointerup',up);
+  },[onMoveItem,sec.id,sec.items]);
 
   useEffect(()=>{
     if(q.length<2){
@@ -395,7 +443,7 @@ const SectionBlock = React.memo(function SectionBlock({
                   <th style={{width:26}}></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody ref={tbodyRef}>
                 {sec.items.length===0&&(
                   <tr><td colSpan={9} style={{padding:'14px',textAlign:'center',color:'#B8C2CC'}}>
                     — нет позиций. Используйте поиск ниже или кнопку «+ Строка» —
@@ -403,7 +451,10 @@ const SectionBlock = React.memo(function SectionBlock({
                 )}
                 {sec.items.map((item,ii)=>(
                   <ItemRow key={item.id} item={item} ii={ii} secId={sec.id}
-                    onUpdate={onUpdate} onDelete={onDelete} srcColor={srcColor}/>
+                    onUpdate={onUpdate} onDelete={onDelete} srcColor={srcColor}
+                    onHandleDown={beginDrag}
+                    isDragging={drag&&drag.from===ii}
+                    dropLine={drag?(drag.to===ii?'top':(drag.to===sec.items.length&&ii===sec.items.length-1?'bottom':null)):null}/>
                 ))}
               </tbody>
             </table>
@@ -523,6 +574,26 @@ const SectionBlock = React.memo(function SectionBlock({
           </div>
         </div>
       )}
+
+      {/* Парящая карточка перетаскиваемой строки */}
+      {drag&&drag.item&&(
+        <div ref={cardRef} style={{position:'fixed',top:0,left:0,zIndex:3000,pointerEvents:'none',
+          width:300,background:'#fff',borderRadius:10,padding:'10px 14px',
+          boxShadow:'0 18px 40px rgba(11,58,99,0.30), 0 4px 10px rgba(0,0,0,0.12)',
+          border:'1px solid #2C7FB8',borderLeft:'4px solid #2C7FB8',
+          transition:'box-shadow .15s',willChange:'transform'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:14,color:'#2C7FB8'}}>⠿</span>
+            <span style={{fontWeight:600,fontSize:13,color:'#0B3A63',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+              {drag.item.name||'(без названия)'}
+            </span>
+          </div>
+          <div style={{fontSize:11.5,color:'#6B7785',marginTop:4,paddingLeft:22}}>
+            {(drag.item.qty||0)} {drag.item.unit||'шт.'}
+            {drag.item.price>0?' × '+drag.item.price.toLocaleString('ru-RU')+' ₽':''}
+          </div>
+        </div>
+      )}
     </div>
   );
 });
@@ -572,7 +643,7 @@ function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispol
 
       {/* ===== ЗАГОЛОВОК + СИГНАТУРА ===== */}
       <div style={{marginTop:24}}>
-        <div style={{fontSize:11,fontWeight:600,letterSpacing:'2px',color:SECOND,textTransform:'uppercase'}}>Коммерческое предложение</div>
+        <div style={{fontSize:11,fontWeight:600,letterSpacing:'2px',color:SECOND,textTransform:'uppercase'}}>Коммерческое предложение{kpNum?' № '+kpNum:''}</div>
         <div style={{fontSize:30,fontWeight:700,color:PRIMARY,letterSpacing:'-0.6px',marginTop:6,lineHeight:1.1}}>Система капельного орошения</div>
         {dripLine}
         <div style={{fontSize:13,color:MUTED}}>Проектирование, оборудование и монтаж под ключ</div>
@@ -716,12 +787,25 @@ function cellQty(c){
   if(typeof c==='string'){ const m=c.match(/(\d+(?:[.,]\d+)?)/); if(m){const n=parseFloat(m[1].replace(',','.')); return n>0?n:0;} }
   return 0;
 }
+// Извлечь денежную сумму («613,63», «61 363,00», «1 663,00 ₽», число)
+function parseMoney(c){
+  if(typeof c==='number') return c>0?c:0;
+  if(typeof c!=='string') return 0;
+  let s=c.replace(/[^\d.,\s]/g,'').replace(/\s+/g,'');
+  if(!s) return 0;
+  if(s.indexOf(',')>=0 && s.indexOf('.')>=0){ s=s.replace(/\./g,'').replace(',','.'); }
+  else if(s.indexOf(',')>=0){ s=s.replace(',','.'); }
+  const n=parseFloat(s);
+  return (isNaN(n)||n<0)?0:n;
+}
 function isNameCell(s){
   if(typeof s!=='string') return false;
   s=s.trim();
   if(s.length<3) return false;
-  if(/^[\d\s.,xх]+$/.test(s)) return false;
-  if(/^(наименование|кол|количество|цена|сумма|ед|№|п\/п|итого|всего|номер)/i.test(s)) return false;
+  if(/^[\d\s.,xх*/+\-]+$/.test(s)) return false;
+  const t=s.toLowerCase();
+  if(/^(наименование|номенклатура|товар|позиция|описание|кол-?во|количество|цена|сумма|ед|единица|итого|всего|подытог|№|n|no|п\/п|номер)$/.test(t)) return false;
+  if(/^(итого|всего|подытог)\b/.test(t)) return false;
   return true;
 }
 // Извлечь пары «название → количество» из произвольного текста (PDF/плоский DOCX)
@@ -741,7 +825,12 @@ function parseRequestLines(text){
     if(m){
       const qty=parseFloat(m[1].replace(',','.'));
       const name=cleanName(line.slice(0,m.index));
-      if(name.length>=3 && qty>0 && qty<1e7){ out.push({name,qty}); continue; }
+      const unit=m[2];
+      // цена = первая денежная сумма после количества (напр. «… 100 компл 613,63 61 363,00» → 613,63)
+      const tail=line.slice(m.index+m[0].length);
+      const pm=tail.match(/\d[\d \u00a0]*[.,]\d{1,2}\b/);
+      const price=pm?parseMoney(pm[0]):0;
+      if(name.length>=3 && qty>0 && qty<1e7){ out.push({name,qty,unit,price}); continue; }
     }
     // 2) ровно одно число во всей строке → это количество
     const nums=line.match(/\d+(?:[.,]\d+)?/g)||[];
@@ -753,22 +842,24 @@ function parseRequestLines(text){
   }
   return out;
 }
-// Найти строку-заголовок таблицы и индексы колонок «название» и «количество»
+// Найти строку-заголовок таблицы и индексы колонок «название» / «количество» / «единица» / «цена»
 function findRequestHeader(rows){
   const n=Math.min(rows.length,20);
   for(let i=0;i<n;i++){
     const row=rows[i]; if(!Array.isArray(row)) continue;
-    let nameCol=-1,qtyCol=-1;
+    let nameCol=-1,qtyCol=-1,unitCol=-1,priceCol=-1;
     row.forEach((c,j)=>{
       const s=(typeof c==='string'?c:'').toLowerCase();
       if(nameCol<0 && /наимен|номенклатур|товар|позиц|описан/.test(s)) nameCol=j;
       if(qtyCol<0 && /кол-?во|кол\.|количеств/.test(s)) qtyCol=j;
+      if(unitCol<0 && /(^|[^а-я])ед\.?($|[^а-я])|едениц|единиц/.test(s)) unitCol=j;
+      if(priceCol<0 && /цена|стоимост|прайс/.test(s) && !/сумма/.test(s)) priceCol=j;
     });
-    if(nameCol>=0&&qtyCol>=0) return {hi:i,nameCol,qtyCol};
+    if(nameCol>=0&&qtyCol>=0) return {hi:i,nameCol,qtyCol,unitCol,priceCol};
   }
   return null;
 }
-// Извлечь пары из строк таблицы. При наличии заголовка — берём строго колонки «название»/«количество»
+// Извлечь позиции из строк таблицы. При наличии заголовка — берём строго колонки «название»/«количество» (+ единица/цена, если есть)
 function parseRequestRows(rows){
   const out=[];
   const hdr=findRequestHeader(rows);
@@ -778,7 +869,9 @@ function parseRequestRows(rows){
       const name=row[hdr.nameCol];
       if(!isNameCell(name)) continue;
       const qty=cellQty(row[hdr.qtyCol]);
-      out.push({name:String(name).trim(),qty:qty>0?qty:0});
+      const unit=(hdr.unitCol>=0 && typeof row[hdr.unitCol]==='string')?row[hdr.unitCol].trim():'';
+      const price=hdr.priceCol>=0?parseMoney(row[hdr.priceCol]):0;
+      out.push({name:String(name).trim(),qty:qty>0?qty:0,unit,price});
     }
     return out;
   }
@@ -831,6 +924,7 @@ function KPApp(){
   const [priceType,setPriceType]=useState('opt');
 
   const [kpNum,setKpNum]=useState('');
+  const [kpSeq,setKpSeq]=useState(0); // последний использованный порядковый номер КП (для автонумерации)
   const [kpDate,setKpDate]=useState(new Date().toISOString().slice(0,10));
   const [typeCeny,setTypeCeny]=useState('Опт');
   const [zakazchik,setZakazchik]=useState('');
@@ -1005,10 +1099,16 @@ function KPApp(){
       sections, total, itemCount,
     };
     setProjects(prev=>{ const next=[proj,...prev]; saveProjects(next); return next; });
+    // Зафиксировать номер КП в счётчике автонумерации (без пропусков при повторном сохранении)
+    try{
+      const m=String(kpNum||'').match(/(\d+)\s*$/);
+      const num=m?parseInt(m[1],10):NaN;
+      if(!isNaN(num)&&num>kpSeq){ setKpSeq(num); STORE.set('np_kp_seq',String(num)); }
+    }catch(e){}
     try{ const tg=window.Telegram&&window.Telegram.WebApp; if(tg&&tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success'); }catch(e){}
     setSaveMsg('Сохранено в базу ✓');
     setTimeout(()=>setSaveMsg(''),2000);
-  },[kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,shefMontazh,shefUnit,notes,globalMarkup,priceType,sections,saveProjects]);
+  },[kpNum,kpSeq,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,shefMontazh,shefUnit,notes,globalMarkup,priceType,sections,saveProjects]);
   const loadProject=useCallback(p=>{
     setKpNum(p.kpNum||''); setKpDate(p.kpDate||new Date().toISOString().slice(0,10)); setTypeCeny(p.typeCeny||'Опт');
     setZakazchik(p.zakazchik||''); setObject(p.object||''); setIspolnitel(p.ispolnitel||''); setPhone(p.phone||'');
@@ -1028,7 +1128,7 @@ function KPApp(){
   const [showClear,setShowClear]=useState(false);
   const [clearMsg,setClearMsg]=useState('');
   const clearAll=useCallback(()=>{
-    setKpNum(''); setKpDate(new Date().toISOString().slice(0,10)); setTypeCeny('Опт');
+    setKpNum(fmtKpNum(kpSeq+1)); setKpDate(new Date().toISOString().slice(0,10)); setTypeCeny('Опт');
     setZakazchik(''); setObject(''); setIspolnitel(''); setPhone('');
     setProjNum(''); setProjArea(''); setProjCulture(''); setProjRegion(''); setProjWater('');
     setLogistika(0); setShefMontazh(0); setShefUnit('га'); setNotes('');
@@ -1036,7 +1136,7 @@ function KPApp(){
     setShowClear(false);
     setClearMsg('Все данные очищены'); setTimeout(()=>setClearMsg(''),2500);
     window.scrollTo(0,0);
-  },[]);
+  },[kpSeq]);
 
   // ===== Загрузка заявки (DOCX / PDF / XLSX) =====
   const reqRef=useRef();
@@ -1046,17 +1146,27 @@ function KPApp(){
     if(res.length && res[0].score>=65) return res[0];
     return null;
   },[mergedExtra]);
+  const [usePrices,setUsePrices]=useState(true); // переносить цены из файла, если они там есть
   const applyRequestPairs=useCallback(pairs=>{
     if(!pairs||!pairs.length){ setReqStatus('empty'); setTimeout(()=>setReqStatus(null),5000); return; }
-    let noPrice=0;
-    const items=pairs.map(({name,qty})=>{
+    let noPrice=0, fromFile=0, fromCat=0;
+    const items=pairs.map(({name,qty,unit,price})=>{
+      // 1) Цена из файла (перенос КП с ценами)
+      if(usePrices && price>0){
+        const it=newItem(name, (unit&&unit.trim())||'шт.', qty, 0, globalMarkup, '', '', '', '');
+        it.price=price; it.manualPrice=true;
+        fromFile++;
+        return it;
+      }
+      // 2) Иначе ищем цену в прайсах
       const m=matchPrice(name);
       if(m){
         const cp=priceType==='opt'?m.p:(m.r||m.p);
-        return newItem(name, m.u||'шт.', qty, cp, globalMarkup, m.srcId, m.srcName, m.a||'', m.c||'');
+        fromCat++;
+        return newItem(name, (unit&&unit.trim())||m.u||'шт.', qty, cp, globalMarkup, m.srcId, m.srcName, m.a||'', m.c||'');
       }
       noPrice++;
-      return newItem(name,'шт.',qty,0,globalMarkup,'','','','');
+      return newItem(name,(unit&&unit.trim())||'шт.',qty,0,globalMarkup,'','','','');
     });
     // Добавляем все позиции одним списком в отдельный раздел «Позиции по заявке» (в порядке заявки, без деления на подгруппы)
     setSections(prev=>{
@@ -1065,9 +1175,9 @@ function KPApp(){
       next=next.map(s=> s.id==='request' ? {...s,items:[...s.items,...items]} : s);
       return next;
     });
-    setReqStatus({total:items.length, noPrice});
-    setTimeout(()=>setReqStatus(null),7000);
-  },[matchPrice,priceType,globalMarkup]);
+    setReqStatus({total:items.length, noPrice, fromFile, fromCat});
+    setTimeout(()=>setReqStatus(null),8000);
+  },[matchPrice,priceType,globalMarkup,usePrices]);
   const handleRequest=useCallback(e=>{
     const file=e.target.files[0]; if(!file){return;} e.target.value='';
     const ext=(file.name.split('.').pop()||'').toLowerCase();
@@ -1128,7 +1238,13 @@ function KPApp(){
           if(Array.isArray(d.sections)&&d.sections.length)setSections(d.sections);
         }
       }catch(e){} }
-      draftLoaded.current=true;
+      // Загрузить счётчик автонумерации и подставить следующий номер, если поле номера пустое
+      STORE.get('np_kp_seq').then(sr=>{
+        let seq=0; if(sr&&sr.value){ const n=parseInt(sr.value,10); if(!isNaN(n)) seq=n; }
+        setKpSeq(seq);
+        setKpNum(cur=> (cur&&String(cur).trim()) ? cur : fmtKpNum(seq+1));
+        draftLoaded.current=true;
+      }).catch(()=>{ setKpNum(cur=> (cur&&String(cur).trim())?cur:fmtKpNum(1)); draftLoaded.current=true; });
     }).catch(()=>{draftLoaded.current=true;});
   },[]);
   useEffect(()=>{
@@ -1267,6 +1383,16 @@ function KPApp(){
   })})),[]);
 
   const onDelete=useCallback((sid,iid)=>setSections(prev=>prev.map(s=>s.id!==sid?s:{...s,items:s.items.filter(i=>i.id!==iid)})),[]);
+  const onMoveItem=useCallback((sid,from,to)=>setSections(prev=>prev.map(s=>{
+    if(s.id!==sid) return s;
+    if(from===to||from<0||from>=s.items.length) return s;
+    const items=s.items.slice();
+    const [m]=items.splice(from,1);
+    let ins=from<to?to-1:to;
+    if(ins<0)ins=0; if(ins>items.length)ins=items.length;
+    items.splice(ins,0,m);
+    return {...s,items};
+  })),[]);
   const onAddBlank=useCallback(sid=>setSections(prev=>prev.map(s=>s.id!==sid?s:{...s,items:[...s.items,newItem('','шт.',0,0,globalMarkup)]})),[globalMarkup]);
   const onAddFromSearch=useCallback((sid,r)=>{
     const cp=priceType==='opt'?r.p:(r.r||r.p);
@@ -1383,19 +1509,26 @@ function KPApp(){
           {/* Заявка от заказчика */}
           <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
             <div style={{fontWeight:700,color:'#0B3A63',marginBottom:4,fontSize:14}}>📄 Заявка от заказчика</div>
-            <div style={{fontSize:12,color:'#888',marginBottom:12}}>Загрузите заявку (DOCX, PDF, XLSX) — позиции и количество подтянутся автоматически. Где найдём цену в прайсах — проставим, остальное выделим жёлтым для ручного ввода.</div>
+            <div style={{fontSize:12,color:'#888',marginBottom:12}}>Загрузите заявку или готовое КП (DOCX, PDF, XLSX) — позиции и количество подтянутся автоматически. Если в файле есть цены и включён перенос — цены возьмутся из файла; иначе подставятся из прайсов, а ненайденное выделится жёлтым.</div>
+            <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#0B3A63',marginBottom:12,cursor:'pointer',userSelect:'none'}}>
+              <input type="checkbox" checked={usePrices} onChange={e=>setUsePrices(e.target.checked)} style={{width:16,height:16,cursor:'pointer'}}/>
+              Переносить цены из файла (если они там есть)
+            </label>
             <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
               <input ref={reqRef} type="file" accept=".docx,.pdf,.xlsx,.xls" style={{display:'none'}} onChange={handleRequest}/>
               <button onClick={()=>reqRef.current.click()}
                 style={{padding:'9px 18px',background:'#2C7FB8',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:14}}>
-                📄 Загрузить заявку
+                📄 Загрузить заявку / КП
               </button>
               {reqStatus==='parsing'&&<span style={{color:'#2C7FB8',fontWeight:600,fontSize:13}}>Обрабатываю файл…</span>}
               {reqStatus==='empty'&&<span style={{color:'#d07000',fontWeight:600,fontSize:13}}>Не удалось распознать позиции в файле</span>}
               {reqStatus==='error'&&<span style={{color:'#c0392b',fontWeight:600,fontSize:13}}>Ошибка чтения файла</span>}
               {reqStatus&&typeof reqStatus==='object'&&(
                 <span style={{fontWeight:600,fontSize:13,color:'#0B3A63'}}>
-                  Добавлено {reqStatus.total} позиц.{reqStatus.noPrice>0?<span style={{color:'#d07000'}}>, для {reqStatus.noPrice} не найдена цена — заполните вручную</span>:''}
+                  Добавлено {reqStatus.total} позиц.
+                  {reqStatus.fromFile>0?<span style={{color:'#2e7d32'}}> · цена из файла: {reqStatus.fromFile}</span>:''}
+                  {reqStatus.fromCat>0?<span style={{color:'#2C7FB8'}}> · из прайсов: {reqStatus.fromCat}</span>:''}
+                  {reqStatus.noPrice>0?<span style={{color:'#d07000'}}> · без цены: {reqStatus.noPrice}</span>:''}
                 </span>
               )}
             </div>
@@ -1440,7 +1573,7 @@ function KPApp(){
           <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(11,58,99,0.06)',border:'1px solid #E6EBF0'}}>
             <div style={{fontWeight:700,color:'#0B3A63',marginBottom:12,fontSize:14}}>Реквизиты КП</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
-              <div><label style={S.lbl}>Номер КП</label><input style={{...S.inp,width:'100%'}} value={kpNum} onChange={e=>setKpNum(e.target.value)} placeholder="КП-001"/></div>
+              <div><label style={S.lbl}>Номер КП <span style={{color:'#9aa',fontWeight:400}}>(авто)</span></label><input style={{...S.inp,width:'100%'}} value={kpNum} onChange={e=>setKpNum(e.target.value)} placeholder="КП-001"/></div>
               <div><label style={S.lbl}>Дата</label><input style={{...S.inp,width:'100%'}} type="date" value={kpDate} onChange={e=>setKpDate(e.target.value)}/></div>
               <div><label style={S.lbl}>Тип цен</label><select style={{...S.inp,width:'100%'}} value={typeCeny} onChange={e=>setTypeCeny(e.target.value)}><option>Опт</option><option>Розница</option><option>Дилер</option></select></div>
               <div><label style={S.lbl}>Объект</label><input style={{...S.inp,width:'100%'}} value={object} onChange={e=>setObject(e.target.value)} placeholder="Виноград, сад..."/></div>
@@ -1475,7 +1608,7 @@ function KPApp(){
           {sections.map(sec=>(
             <SectionBlock key={sec.id} sec={sec}
               globalMarkup={globalMarkup} priceType={priceType} hotItems={hotItems}
-              onUpdate={onUpdate} onDelete={onDelete} onAddBlank={onAddBlank}
+              onUpdate={onUpdate} onDelete={onDelete} onAddBlank={onAddBlank} onMoveItem={onMoveItem}
               onAddFromSearch={onAddFromSearch} onRemoveHot={onRemoveHot}
               extraCatalogs={mergedExtra} totalCatalogCount={totalCat} allSources={allSources}/>
           ))}
