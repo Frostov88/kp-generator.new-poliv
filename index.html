@@ -16,6 +16,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -87,13 +88,13 @@ function searchAll(catalogs, query, extraCatalogs, srcFilter) {
 }
 
 // ===== НЕЧЁТКИЙ ПОДБОР ЦЕНЫ (нормализация, синонимы, диаметр как ключ) =====
-const _NOISE=new Set(['д','d','мм','m','м','шт','бухта','бухте','отрезок','хлыст','диам','ду','ф','для','с','и','в','на','под','тип','класс','sdr','серия','series','ang','flanged','threaded','резьба','резьбовой','фланец','фланцевый','компр','эл','св']);
+const _NOISE=new Set(['д','d','мм','m','м','шт','бухта','бухте','отрезок','хлыст','диам','ду','ф','для','с','и','в','на','под','тип','класс','sdr','серия','series','ang','flanged','threaded','резьба','резьбовой','фланец','фланцевый','компр','эл','св','атм','бар','atm','bar']);
 const _SYN=[
   ['труба',/(труб|трубопровод|\bpe\b|\bпнд\b|\bпэ\b|\bпвх\b|хлыст)/],
   ['капельная',/(капельн|garden\s*tube|drip|streamline|\bлента\b|трубка)/],
   ['лейфлет',/(лейфлет|layflat|\bl\.?f\b|рукав)/],
   ['кран',/(\bкран|клапан|valve|\braf\b|гидрант|задвижк|вентил|крановая)/],
-  ['муфта',/муфт/],['отвод',/отвод/],['тройник',/тройник/],
+  ['муфта',/муфт/],['отвод',/(отвод|угол)/],['тройник',/тройник/],
   ['старт',/(старт|коннектор)/],['заглушка',/(заглушк|восьмерк)/],
   ['седло',/(седл|врезк)/],['фитинг',/фитинг/],['фильтр',/фильтр/],
   ['насос',/насос/],['скоба',/скоб/],['редуктор',/(редукц|редуктор|понижающ|\bprv\b)/],
@@ -116,8 +117,8 @@ function _tok(s){
   let dia=dias.length?Math.max(...dias):null;     // основной типоразмер = крупнейший стандартный диаметр
   if(!dia && cats.includes('капельная')) dia=16;  // капельная по умолчанию 16 мм (Streamline/Garden tube)
   let mat=null;                                    // материал трубы: ПЭ/ПНД ≠ ПВХ/клеевая
-  if(/\b(пэ|пнд|pe)\b/.test(c)) mat='pe';
-  else if(/(пвх|pvc|aquaviva|клеев)/.test(c)) mat='pvc';
+  if(/пнд|пэ|\bpe\b/.test(c)) mat='pe';
+  else if(/пвх|pvc|aquaviva|клеев/.test(c)) mat='pvc';
   let inch=null;                                   // дюймовый размер лейфлета (2/3/4/6)
   if(cats.includes('лейфлет')){ const f=nums.find(n=>_LF.has(n)); if(f!=null) inch=f; }
   const seq=nums.filter(n=>Number.isInteger(n)).join('.');   // сигнатура размеров, напр. 16.20.16
@@ -163,6 +164,16 @@ function fuzzyBest(catalogs,extra,name){
     const sc=fuzzyScore(qt,item); if(sc>bestS){ bestS=sc; best={...item,srcId,srcName:src.name,score:sc}; }
   }
   return (best && bestS>=60)? best : null;
+}
+// Все релевантные совпадения (та же позиция в разных прайсах), ранжированные по близости
+function fuzzyAll(catalogs,extra,name,limit){
+  const qt=_tok(name); if(!qt.cats.length && !qt.nums.length) return [];
+  const allCats=Object.assign({},catalogs,extra); const out=[];
+  for(const [srcId,src] of Object.entries(allCats)) for(const item of src.items){
+    const sc=fuzzyScore(qt,item); if(sc>=60) out.push({...item,srcId,srcName:src.name,score:sc});
+  }
+  out.sort((a,b)=>b.score-a.score);
+  return out.slice(0,limit||20);
 }
 
 // Получить все позиции конкретного прайса (для просмотра)
@@ -354,12 +365,14 @@ function NumInput({ value, onChange, style, placeholder='0', decimals=2, classNa
 }
 
 // ===================== ITEM ROW — вне KPApp, стабильный компонент =====================
-const ItemRow = React.memo(function ItemRow({ item, ii, secId, onUpdate, onDelete, srcColor, onHandleDown, isDragging, dropLine }) {
+const ItemRow = React.memo(function ItemRow({ item, ii, secId, onUpdate, onDelete, srcColor, onHandleDown, isDragging, dropLine, getAlternatives, onApplyMatch, priceType }) {
+  const [showAlt,setShowAlt]=useState(false);
+  const alts = showAlt && getAlternatives ? getAlternatives(item.name) : [];
   const sum = (item.qty||0) * (item.price||0);
   const warn = item.qty > 0 && item.price === 0;
   const bg = isDragging ? '#EAF3FF' : (warn?'#fffef5':ii%2===0?'#fff':'#f8fdf6');
   const dropShadow = dropLine==='top' ? 'inset 0 3px 0 0 #2C7FB8' : dropLine==='bottom' ? 'inset 0 -3px 0 0 #2C7FB8' : 'none';
-  return (
+  return (<>
     <tr data-row-idx={ii} style={{background:bg,borderBottom:'1px solid #eef5ea',opacity:isDragging?0.35:1,boxShadow:dropShadow,transition:'opacity .12s, box-shadow .12s'}}>
       <td style={{padding:'2px 4px',textAlign:'center'}}>
         <div onPointerDown={e=>onHandleDown&&onHandleDown(ii,e)}
@@ -376,13 +389,13 @@ const ItemRow = React.memo(function ItemRow({ item, ii, secId, onUpdate, onDelet
           style={{...S.inp,width:'100%',padding:'2px 5px',fontSize:12.5}}
           placeholder="Наименование"
         />
-        {(item.art||item.srcName)&&(
-          <div style={{display:'flex',gap:6,marginTop:2,flexWrap:'wrap'}}>
-            {item.art&&<span style={{fontSize:10,color:'#999',fontFamily:'monospace'}}>арт: {item.art}</span>}
-            {item.code&&<span style={{fontSize:10,color:'#bbb',fontFamily:'monospace'}}>код: {item.code}</span>}
-            {item.srcName&&<span style={{fontSize:10,fontWeight:600,color:'#fff',background:srcColor(item.srcId),borderRadius:8,padding:'0 6px'}}>{item.srcName}</span>}
-          </div>
-        )}
+        <div style={{display:'flex',gap:6,marginTop:2,flexWrap:'wrap',alignItems:'center'}}>
+          {item.art&&<span style={{fontSize:10,color:'#999',fontFamily:'monospace'}}>арт: {item.art}</span>}
+          {item.code&&<span style={{fontSize:10,color:'#bbb',fontFamily:'monospace'}}>код: {item.code}</span>}
+          {item.srcName&&<span style={{fontSize:10,fontWeight:600,color:'#fff',background:srcColor(item.srcId),borderRadius:8,padding:'0 6px'}}>{item.srcName}</span>}
+          {item.fuzzy&&<span style={{fontSize:10,fontWeight:600,color:'#b8860b',background:'#FFF8E8',borderRadius:8,padding:'0 6px'}}>подбор неточный</span>}
+          <button onClick={()=>setShowAlt(v=>!v)} style={{fontSize:10,fontWeight:600,color:'#2C7FB8',background:'#EAF3FB',border:'none',borderRadius:8,padding:'1px 8px',cursor:'pointer'}}>{showAlt?'▲ скрыть':'⇄ цены из прайсов'}</button>
+        </div>
       </td>
       <td style={{padding:'2px 3px'}}>
         <input value={item.unit} onChange={e=>onUpdate(secId,item.id,'unit',e.target.value)}
@@ -417,13 +430,35 @@ const ItemRow = React.memo(function ItemRow({ item, ii, secId, onUpdate, onDelet
           onMouseLeave={e=>{e.currentTarget.style.color='#ddd';e.currentTarget.style.background='none';}}>🗑</button>
       </td>
     </tr>
-  );
+    {showAlt&&(
+      <tr>
+        <td colSpan={9} style={{padding:'0 8px 10px 40px',background:'#F7FAFD'}}>
+          <div style={{fontSize:11,color:'#6B7785',margin:'4px 0 6px'}}>Эта же позиция в прайсах — нажмите вариант, чтобы подставить цену:</div>
+          {alts.length===0
+            ? <div style={{fontSize:12,color:'#999',padding:'4px 0'}}>Совпадений в прайсах не найдено — уточните наименование в строке.</div>
+            : <div style={{display:'flex',flexDirection:'column',gap:4,maxHeight:240,overflowY:'auto',paddingRight:4}}>
+                {alts.map((a,k)=>{ const cp=priceType==='opt'?a.p:(a.r||a.p); const cur=item.srcId===a.srcId&&(item.art||'')===(a.a||''); return (
+                  <div key={k} onClick={()=>{onApplyMatch&&onApplyMatch(secId,item.id,a); setShowAlt(false);}}
+                    style={{display:'flex',alignItems:'center',gap:8,padding:'5px 8px',borderRadius:6,cursor:'pointer',background:cur?'#EAF7EA':'#fff',border:'1px solid '+(cur?'#7FAF4D':'#E6EBF0')}}>
+                    <span style={{fontSize:10,fontWeight:600,color:'#fff',background:srcColor(a.srcId),borderRadius:8,padding:'1px 6px',whiteSpace:'nowrap'}}>{a.srcName}</span>
+                    <span style={{flex:1,fontSize:12,color:'#222',lineHeight:1.25}}>{a.n}</span>
+                    {a.a&&<span style={{fontSize:10,color:'#aaa',fontFamily:'monospace'}}>{a.a}</span>}
+                    <span style={{fontSize:12.5,fontWeight:700,color:'#0B3A63',whiteSpace:'nowrap'}}>{cp?cp.toLocaleString('ru-RU')+' ₽':'—'}</span>
+                    {cur&&<span style={{fontSize:10,color:'#5a9a47',fontWeight:600,whiteSpace:'nowrap'}}>текущий</span>}
+                  </div>
+                );})}
+              </div>}
+        </td>
+      </tr>
+    )}
+  </>);
 });
 
 // ===================== SECTION BLOCK — вне KPApp =====================
 const SectionBlock = React.memo(function SectionBlock({
   sec, globalMarkup, priceType, hotItems,
   onUpdate, onDelete, onAddBlank, onAddFromSearch, onRemoveHot, onMoveItem,
+  getAlternatives, onApplyMatch,
   extraCatalogs, totalCatalogCount, allSources
 }) {
   const [q, setQ] = useState('');
@@ -535,6 +570,7 @@ const SectionBlock = React.memo(function SectionBlock({
                 {sec.items.map((item,ii)=>(
                   <ItemRow key={item.id} item={item} ii={ii} secId={sec.id}
                     onUpdate={onUpdate} onDelete={onDelete} srcColor={srcColor}
+                    getAlternatives={getAlternatives} onApplyMatch={onApplyMatch} priceType={priceType}
                     onHandleDown={beginDrag}
                     isDragging={drag&&drag.from===ii}
                     dropLine={drag?(drag.to===ii?'top':(drag.to===sec.items.length&&ii===sec.items.length-1?'bottom':null)):null}/>
@@ -855,6 +891,184 @@ function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispol
 
 
 
+// ===================== НАСТОЯЩИЙ (ВЕКТОРНЫЙ) PDF =====================
+// Собирает КП напрямую через jsPDF + autoTable (текст выделяется, строки не рвутся).
+function _hexRgb(h){h=h.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+function makeVectorPdf(d){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  if(typeof doc.autoTable!=='function') throw new Error('Плагин таблиц (autoTable) не загрузился — проверьте интернет');
+  // Встроенный шрифт DejaVu — сабсет: нет U+00A0 (нераз. пробел), «·» (U+00B7), «×» (U+00D7).
+  // jsPDF обрывает строку на отсутствующем глифе — поэтому заменяем их на присутствующие.
+  const SAFE=s=>String(s==null?'':s).replace(/[\u00A0\u202F\u2009]/g,' ').replace(/\u00D7/g,'x').replace(/[\u00B7\u2022]/g,'-');
+  const _docText=doc.text.bind(doc);
+  doc.text=function(){ const a=Array.prototype.slice.call(arguments); if(typeof a[0]==='string')a[0]=SAFE(a[0]); else if(Array.isArray(a[0]))a[0]=a[0].map(SAFE); return _docText.apply(null,a); };
+  const FONT='DejaVu';
+  try{
+    doc.addFileToVFS('DejaVu.ttf',DEJAVU_REGULAR); doc.addFont('DejaVu.ttf',FONT,'normal');
+    doc.addFileToVFS('DejaVuB.ttf',DEJAVU_BOLD); doc.addFont('DejaVuB.ttf',FONT,'bold');
+  }catch(e){ console.warn('font',e); }
+  const PRIMARY=_hexRgb('#0B3A63'),SECOND=_hexRgb('#2C7FB8'),ACCENT=_hexRgb('#7FAF4D'),BG=_hexRgb('#F8FAFC'),TEXT=_hexRgb('#1D1D1F'),DIV=_hexRgb('#E6EBF0'),MUTED=_hexRgb('#6B7785');
+  const W=210,ML=14,RIGHT=210-14,CW=210-28;
+  const _sp=s=>String(s).replace(/[\u00A0\u202F\u2009]/g,' ');
+  const money=n=>{n=parseFloat(n)||0;if(!n)return'';return _sp(n.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}))+' \u20BD';};
+  const qtyF=n=>{n=parseFloat(n)||0;if(!n)return'';return _sp(n%1===0?n.toLocaleString('ru-RU'):n.toLocaleString('ru-RU',{maximumFractionDigits:1}));};
+  const setF=(st,sz,c)=>{doc.setFont(FONT,st);doc.setFontSize(sz);doc.setTextColor(c[0],c[1],c[2]);};
+  const draw=c=>doc.setDrawColor(c[0],c[1],c[2]);
+  const fill=c=>doc.setFillColor(c[0],c[1],c[2]);
+  let y=14;
+
+  // Разделители-точки: символа «·» в шрифте нет — рисуем маленький кружок
+  const dotR=(segs,xR,yy)=>{ const ws=segs.map(s=>doc.getTextWidth(s)),dg=1.4; const tot=ws.reduce((a,b)=>a+b,0)+(segs.length-1)*dg*2; let x=xR-tot; segs.forEach((s,i)=>{ doc.text(s,x,yy); x+=ws[i]; if(i<segs.length-1){ x+=dg; fill(MUTED); doc.circle(x,yy-0.85,0.42,'F'); x+=dg; } }); };
+  const dotL=(segs,xL,yy)=>{ const dg=1.3; let x=xL; segs.forEach((s,i)=>{ doc.text(s,x,yy); x+=doc.getTextWidth(s); if(i<segs.length-1){ x+=dg; fill(MUTED); doc.circle(x,yy-0.7,0.4,'F'); x+=dg; } }); };
+
+  // ШАПКА (логотип ≈20мм, реквизиты выровнены по верху)
+  try{ doc.addImage('data:image/png;base64,'+LOGO_B64,'PNG',ML,8.5,58,20); }catch(e){}
+  setF('bold',11.25,PRIMARY); doc.text('ООО «ТД Новый Полив»',RIGHT,13.5,{align:'right'});
+  setF('normal',8,MUTED);
+  dotR(['г. Воронеж, ул. Пеше-Стрелецкая, 74А','ИНН 3665825656'],RIGHT,18.9);
+  dotR(['+7-962-331-65-65','new-poliv@yandex.ru','new-poliv.ru'],RIGHT,23.4);
+  draw(PRIMARY); doc.setLineWidth(0.4); doc.line(ML,33,RIGHT,33);
+  y=42;
+
+  // ЗАГОЛОВОК
+  setF('bold',8.25,SECOND); doc.setCharSpace(0.5);
+  doc.text(('Коммерческое предложение'+(d.kpNum?' № '+d.kpNum:'')).toUpperCase(),ML,y); doc.setCharSpace(0);
+  y+=9; setF('bold',22.5,PRIMARY); doc.text('Система капельного орошения',ML,y);
+  y+=4.8; draw(SECOND); doc.setLineWidth(0.4); doc.line(ML,y,RIGHT,y);
+  fill(ACCENT); for(let i=0;i<=5;i++){ doc.circle(ML+CW*(i/5),y,0.9,'F'); }
+  y+=8.5; setF('normal',9.75,MUTED); doc.text('Проектирование, оборудование и монтаж под ключ',ML,y);
+  y+=11.5;
+
+  // РЕКВИЗИТЫ
+  let dateStr=''; try{ dateStr=_sp(new Date(d.kpDate+'T12:00:00').toLocaleDateString('ru-RU',{day:'2-digit',month:'long',year:'numeric'})); }catch(e){ dateStr=d.kpDate||''; }
+  const reqRows=[
+    ['Заказчик:', d.zakazchik||'—', (d.projNum?'№ проекта:':'Объект:'), d.projNum||d.object||'—'],
+    ['Исполнитель:', d.ispolnitel||'—', 'Телефон:', d.phone||'—'],
+    ['Дата:', dateStr, 'Тип цен:', d.typeCeny||''],
+  ];
+  const colA=ML, colB=ML+24, colC=ML+98, colD=ML+98+22;
+  reqRows.forEach(r=>{
+    setF('normal',8.5,MUTED); doc.text(String(r[0]),colA,y);
+    setF('bold',8.5,TEXT); doc.text(String(r[1]),colB,y);
+    setF('normal',8.5,MUTED); doc.text(String(r[2]),colC,y);
+    setF('bold',8.5,TEXT); doc.text(String(r[3]),colD,y);
+    y+=6.2;
+  });
+  y+=5;
+
+  // КАРТОЧКИ ПРОЕКТА
+  const cards=[['Площадь',d.projArea,ACCENT],['Культура',d.projCulture,SECOND],['Регион',d.projRegion,ACCENT],['Источник воды',d.projWater,SECOND]].filter(c=>c[1]&&String(c[1]).trim());
+  if(cards.length){
+    const gap=4, cw=(CW-gap*(cards.length-1))/cards.length, ch=18, r=1.6;
+    cards.forEach((c,i)=>{ const x=ML+i*(cw+gap);
+      fill(c[2]); doc.roundedRect(x,y,cw,ch,r,r,'F');                     // акцент — вся карточка
+      fill([255,255,255]); doc.roundedRect(x,y+0.9,cw,ch-0.9,r,r,'F');    // белое тело (виден только верхний кант со скруглением)
+      draw(DIV); doc.setLineWidth(0.15); doc.roundedRect(x,y,cw,ch,r,r,'S');
+      setF('normal',7.5,MUTED); doc.text(String(c[0]).toUpperCase(),x+3.5,y+7);
+      setF('bold',12.75,PRIMARY); doc.text(SAFE(c[1]),x+3.5,y+13.5);
+    });
+    y+=ch+10;
+  }
+
+  // СПЕЦИФИКАЦИЯ
+  if(y>246){ doc.addPage(); y=18; }
+  setF('bold',13.5,PRIMARY); doc.text('Спецификация оборудования',ML,y); y+=5.5;
+  setF('normal',9,MUTED); doc.text('Комплектующие системы орошения по проекту',ML,y); y+=3.5;
+
+  let row=0; const body=[];
+  d.sections.forEach((sec,si)=>{
+    const active=sec.items.filter(i=>i.name&&(i.qty>0));
+    if(!active.length)return;
+    const acc=si%2===0?SECOND:ACCENT;
+    const secSum=active.reduce((t,i)=>t+(i.qty||0)*(i.price||0),0);
+    body.push([{content:SAFE(String(sec.title||'').toUpperCase()),colSpan:6,styles:{fontStyle:'bold',textColor:acc,fontSize:8,halign:'left',fillColor:[255,255,255],cellPadding:{top:4,bottom:1.6,left:1,right:1},lineWidth:0}}]);
+    active.forEach(it=>{ row++; const sum=(it.qty||0)*(it.price||0);
+      body.push([String(row),SAFE(it.name||''),qtyF(it.qty),SAFE(it.unit||'шт.'),money(it.price),money(sum)]);
+    });
+    body.push([{content:'Подытог',colSpan:5,styles:{halign:'right',fontStyle:'bold',textColor:PRIMARY}},{content:money(secSum),styles:{halign:'right',fontStyle:'bold',textColor:PRIMARY}}]);
+  });
+
+  doc.autoTable({
+    startY:y+2,
+    head:[['№','Наименование','Кол-во','Ед.','Цена','Сумма']],
+    body,
+    theme:'plain',
+    styles:{font:FONT,fontStyle:'normal',fontSize:8.5,textColor:TEXT,cellPadding:{top:2.6,bottom:2.6,left:2.4,right:2.4},overflow:'linebreak',valign:'middle'},
+    headStyles:{fontStyle:'bold',fontSize:7.5,textColor:PRIMARY,fillColor:BG,halign:'center',cellPadding:{top:2.8,bottom:2.8,left:2.4,right:2.4}},
+    columnStyles:{0:{halign:'center',cellWidth:10,textColor:MUTED},1:{halign:'left',cellWidth:'auto'},2:{halign:'center',cellWidth:17,textColor:MUTED},3:{halign:'center',cellWidth:12,textColor:MUTED},4:{halign:'right',cellWidth:28,overflow:'visible'},5:{halign:'right',cellWidth:33,overflow:'visible'}},
+    margin:{left:ML,right:ML,bottom:16},
+    rowPageBreak:'avoid',
+    didParseCell:function(data){
+      if(data.section==='head'){ data.cell.styles.halign = data.column.index===1?'left':(data.column.index>=4?'right':'center'); }
+    },
+    willDrawCell:function(data){
+      if(data.section==='head' && data.column.index===0){
+        draw(DIV); doc.setLineWidth(0.35); doc.line(ML,data.cell.y+data.cell.height,RIGHT,data.cell.y+data.cell.height);
+      }
+    },
+    didDrawCell:function(data){
+      if(data.section!=='body'||data.column.index!==5) return;
+      const raw=data.row.raw;
+      const isItem=typeof raw[0]==='string';
+      const isSub=raw[0]&&typeof raw[0]==='object'&&raw[0].content==='Подытог';
+      const yb=data.cell.y+data.cell.height;
+      if(isItem){ draw(DIV); doc.setLineWidth(0.1); doc.line(ML,yb,RIGHT,yb); }
+      else if(isSub){ draw(DIV); doc.setLineWidth(0.3); doc.line(ML,yb,RIGHT,yb); }
+    },
+  });
+  y=doc.lastAutoTable.finalY+12;
+
+  const pageH=297, need=(mm)=>{ if(y+mm>pageH-16){ doc.addPage(); y=18; } };
+
+  // СТРУКТУРА СТОИМОСТИ
+  const eqTotal=d.sections.reduce((t,s)=>t+s.items.reduce((a,i)=>a+(i.qty||0)*(i.price||0),0),0);
+  if(d.logN>0||d.montN>0||d.shefN>0){
+    const cc=[['Оборудование',eqTotal,MUTED]];
+    if(d.logN>0)cc.push(['Логистика',d.logN,SECOND]);
+    if(d.montN>0)cc.push(['Монтаж',d.montN,ACCENT]);
+    if(d.shefN>0)cc.push(['Шеф-монтаж',d.shefN,_hexRgb('#7A4DAF')]);
+    need(44);
+    setF('bold',13.5,PRIMARY); doc.text('Структура стоимости',ML,y); y+=5.5;
+    setF('normal',9,MUTED); doc.text('Распределение по статьям проекта',ML,y); y+=5;
+    const gap=4, cw=(CW-gap*(cc.length-1))/cc.length, ch=20, r=1.6;
+    cc.forEach((c,i)=>{ const x=ML+i*(cw+gap);
+      fill(c[2]); doc.roundedRect(x,y,cw,ch,r,r,'F');
+      fill([255,255,255]); doc.roundedRect(x,y+1.1,cw,ch-1.1,r,r,'F');
+      draw(DIV); doc.setLineWidth(0.15); doc.roundedRect(x,y,cw,ch,r,r,'S');
+      setF('bold',7.5,MUTED); doc.text(String(c[0]).toUpperCase(),x+4,y+8);
+      setF('bold',12,PRIMARY); doc.text(money(c[1]),x+4,y+15);
+    });
+    y+=ch+11;
+  }
+
+  // ИТОГ
+  need(28);
+  fill(PRIMARY); doc.roundedRect(ML,y,CW,20,2.6,2.6,'F');
+  setF('normal',9.75,[190,208,224]); doc.setCharSpace(0.5);
+  doc.text('ИТОГО ПО ПРОЕКТУ',ML+8,y+12); doc.setCharSpace(0);
+  setF('bold',20,[255,255,255]); doc.text(money(d.final||d.grand),RIGHT-8,y+12.6,{align:'right'});
+  y+=20+9;
+
+  // ПРИМЕЧАНИЯ
+  if(d.notes&&String(d.notes).trim()){
+    setF('normal',8.5,MUTED);
+    const lines=doc.splitTextToSize(SAFE('Примечания: '+d.notes),CW);
+    need(lines.length*4+4);
+    doc.text(lines,ML,y); y+=lines.length*4+4;
+  }
+
+  // ФУТЕР (две строки слева, чтобы ничего не налезало)
+  need(13);
+  draw(DIV); doc.setLineWidth(0.15); doc.line(ML,y,RIGHT,y); y+=4.2;
+  setF('normal',7,MUTED);
+  dotL(['ООО «ТД Новый Полив»','ИНН 3665825656','new-poliv.ru'],ML,y); y+=3.6;
+  dotL(['Предложение действительно при наличии товара','уточняется по срокам поставки'],ML,y);
+
+  return doc;
+}
+
+
 // ===================== ПАРСЕР ЗАЯВОК (DOCX / PDF / XLSX) =====================
 // Классификатор раздела по русскому названию
 function ruSection(name){
@@ -1016,6 +1230,7 @@ function KPApp(){
   const [hotItems,setHotItems]=useState([]);
   const [rtfStatus,setRtfStatus]=useState(null);
   const [rtfRound,setRtfRound]=useState(50); // округление длин вверх, м (0 = без округления)
+  const [pipeMat,setPipeMat]=useState('pnd'); // материал магистральных труб: 'pnd' (ПНД/ПЭ) | 'pvh' (ПВХ)
   const [rtfInfo,setRtfInfo]=useState(null);
 
   // ===== Этап 2: помощник по фитингам =====
@@ -1057,9 +1272,10 @@ function KPApp(){
   const [tgError,setTgError]=useState('');
   const [viewPrice,setViewPrice]=useState(null);
   const printRef=useRef();
+  const pdfDataRef=useRef(null);
 
-  // Генерация PDF из предпросмотра. Возвращает jsPDF doc (не сохраняет).
-  const buildPdf=useCallback(async()=>{
+  // Скриншотный PDF (запасной) — рендер предпросмотра в картинку.
+  const buildPdfShot=useCallback(async()=>{
     const el=document.getElementById('kp-print-area');
     if(!el||!window.html2canvas||!window.jspdf) throw new Error('Откройте предпросмотр');
     if(document.fonts&&document.fonts.ready){ try{ await document.fonts.ready; }catch(e){} }
@@ -1086,6 +1302,14 @@ function KPApp(){
     return pdf;
   },[]);
 
+  // Настоящий векторный PDF (по умолчанию) — текст выделяется, строки не рвутся.
+  const buildPdf=useCallback(async()=>{
+    if(!window.jspdf||!window.jspdf.jsPDF) throw new Error('jsPDF не загружен');
+    const d=pdfDataRef.current;
+    if(!d||!d.sections) throw new Error('Откройте предпросмотр');
+    return makeVectorPdf(d);
+  },[]);
+
   // Локальное скачивание PDF («Скачать повторно»)
   const savePDF=useCallback(async()=>{
     setPdfLoading(true);
@@ -1096,6 +1320,17 @@ function KPApp(){
     }catch(err){ console.error('PDF error:',err); alert('Ошибка создания PDF: '+err.message); }
     setPdfLoading(false);
   },[buildPdf,zakazchik,kpDate]);
+
+  // Запасной способ — PDF-скриншот (если векторный по какой-то причине не подходит)
+  const savePDFShot=useCallback(async()=>{
+    setPdfLoading(true);
+    try{
+      const pdf=await buildPdfShot();
+      const slug=(zakazchik||'КП').replace(/[^\wа-яёА-ЯЁ]/g,'_').replace(/_+/g,'_').slice(0,20);
+      pdf.save('КП_'+slug+'_'+kpDate+'_скан.pdf');
+    }catch(err){ console.error('PDF error:',err); alert('Ошибка создания PDF: '+err.message); }
+    setPdfLoading(false);
+  },[buildPdfShot,zakazchik,kpDate]);
 
   // Отправка PDF в Telegram через backend
   const sendToTelegram=useCallback(async()=>{
@@ -1265,6 +1500,17 @@ function KPApp(){
     if(fb){ fb.fuzzy=true; return fb; }
     return null;
   },[mergedExtra]);
+  // Альтернативы цены: эта же позиция во всех прайсах (для инлайн-выбора в строке)
+  const getAlternatives=useCallback(name=>{
+    if(!name||!String(name).trim()) return [];
+    return fuzzyAll(BUILTIN_CATALOGS, mergedExtra, name, 20);
+  },[mergedExtra]);
+  const onApplyMatch=useCallback((sid,iid,m)=>setSections(prev=>prev.map(s=>s.id!==sid?s:{...s,items:s.items.map(i=>{
+    if(i.id!==iid) return i;
+    const cp=priceType==='opt'?m.p:(m.r||m.p);
+    const price=cp>0?Math.round(cp*(1+(i.markup||0)/100)):i.price;
+    return {...i,costPrice:cp,price,manualPrice:false,srcId:m.srcId,srcName:m.srcName,art:m.a||'',code:m.c||'',fuzzy:false};
+  })})),[priceType]);
   const [usePrices,setUsePrices]=useState(true); // переносить цены из файла, если они там есть
   const applyRequestPairs=useCallback(pairs=>{
     if(!pairs||!pairs.length){ setReqStatus('empty'); setTimeout(()=>setReqStatus(null),5000); return; }
@@ -1354,7 +1600,7 @@ function KPApp(){
           if(d.projCulture!=null)setProjCulture(d.projCulture); if(d.projRegion!=null)setProjRegion(d.projRegion); if(d.projWater!=null)setProjWater(d.projWater);
           if(d.logistika!=null)setLogistika(d.logistika); if(d.montazh!=null)setMontazh(d.montazh); if(d.shefMontazh!=null)setShefMontazh(d.shefMontazh); if(d.shefUnit)setShefUnit(d.shefUnit);
           if(d.logOn!=null)setLogOn(d.logOn); if(d.montOn!=null)setMontOn(d.montOn); if(d.shefOn!=null)setShefOn(d.shefOn);
-          if(d.notes!=null)setNotes(d.notes); if(typeof d.globalMarkup==='number')setGlobalMarkup(d.globalMarkup); if(d.priceType)setPriceType(d.priceType);
+          if(d.notes!=null)setNotes(d.notes); if(typeof d.globalMarkup==='number')setGlobalMarkup(d.globalMarkup); if(d.priceType)setPriceType(d.priceType); if(d.pipeMat)setPipeMat(d.pipeMat);
           if(Array.isArray(d.sections)&&d.sections.length)setSections(d.sections);
         }
       }catch(e){} }
@@ -1375,7 +1621,7 @@ function KPApp(){
   useEffect(()=>{
     if(!draftLoaded.current) return;
     const t=setTimeout(()=>{
-      const d={kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,sections};
+      const d={kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,pipeMat,sections};
       STORE.set('np_draft',JSON.stringify(d));
     },700);
     return ()=>clearTimeout(t);
@@ -1482,14 +1728,18 @@ function KPApp(){
         if(!bom.length){setRtfStatus('error');return;}
         const roundUp=(q,unit)=>{ if(unit==='м.'&&rtfRound>0) return Math.ceil(q/rtfRound)*rtfRound; return Math.round(q*10)/10; };
         const buckets={}; let matched=0,fuzzy=0,none=0;
+        // Переименование магистральной трубы под выбранный материал: IrriCAD всегда даёт "ПЭ",
+        // при выборе ПВХ направляем на клеевой прайс (AQUAVIVA), при ПНД оставляем ПНД (труб ПНД в прайсах может не быть).
+        const fixPipe=nm=>{ const mm=String(nm).match(/^Труба\s+П[ЭН]Д?\s*d\.(\d+)\/(\d+)/i); if(!mm) return nm; const D=mm[1], cls=mm[2]; return pipeMat==='pvh' ? `Труба ПВХ d.${D} ${cls} атм` : `Труба ПНД d.${D} ${cls} бар`; };
         bom.forEach(it=>{
+          const nm=it.sec==='magistral'?fixPipe(it.name):it.name;
           const qty=roundUp(it.qty,it.unit);
-          const m=matchPrice(it.name);
+          const m=matchPrice(nm);
           let item;
           if(m){ const cp=priceType==='opt'?m.p:(m.r||m.p);
-            item=newItem(it.name,it.unit||m.u||'шт.',qty,cp,globalMarkup,m.srcId,m.srcName,m.a||'',m.c||'');
+            item=newItem(nm,it.unit||m.u||'шт.',qty,cp,globalMarkup,m.srcId,m.srcName,m.a||'',m.c||'');
             if(m.fuzzy){fuzzy++;item.fuzzy=true;} else matched++;
-          } else { item=newItem(it.name,it.unit,qty,0,globalMarkup,'','','',''); none++; }
+          } else { item=newItem(nm,it.unit,qty,0,globalMarkup,'','','',''); none++; }
           (buckets[it.sec]||(buckets[it.sec]=[])).push(item);
         });
         setSections(prev=>prev.map(s=>buckets[s.id]?{...s,items:[...s.items,...buckets[s.id]]}:s));
@@ -1547,14 +1797,22 @@ function KPApp(){
     const packLen=d=>d>=WELD?STICK:coil;  // бухта для d<=110, хлыст для d>=125
     const isWeld=d=>d>=WELD;
     const rows=[];
-    // Соединение прямых участков: d<=110 — компрессионная муфта (бухты), d>=125 — пайка встык (фитинг не нужен, только сварной стык)
-    diams.forEach(d=>{
-      if(isWeld(d)) rows.push({sel:true,name:'Стык сварной (пайка встык) d.'+d,qty:Math.ceil(pipeLenByDiam[d]/STICK),unit:'шт.',sec:'magistral'});
-      else rows.push({sel:true,name:'Муфта соединительная компр. d.'+d,qty:Math.ceil(pipeLenByDiam[d]/coil),unit:'шт.',sec:'magistral'});
-    });
-    // Редукции между соседними диаметрами: электросварной редукционный фитинг (если зона пайки), иначе компрессионная переходная муфта
-    for(let i=0;i<diams.length-1;i++){ const w=isWeld(diams[i])||isWeld(diams[i+1]); rows.push({sel:true,name:(w?'Фитинг электросварной редукционный d.':'Муфта переходная компр. d.')+diams[i]+'×d.'+diams[i+1],qty:1,unit:'шт.',sec:'magistral'}); }
-    diams.forEach(d=>rows.push({sel:true,name:(isWeld(d)?'Отвод электросварной d.':'Отвод компр. d.')+d,qty:blocks>0?blocks:0,unit:'шт.',sec:'magistral'}));
+    if(pipeMat==='pvh'){
+      // ПВХ (клеевое, AQUAVIVA): труба хлыстами по 3 м. Муфта клеевая на стык, редукционное кольцо на переход, угол клеевой на поворот.
+      const PVCSTK=3;
+      diams.forEach(d=>rows.push({sel:true,name:'Муфта клеевая d.'+d,qty:Math.ceil(pipeLenByDiam[d]/PVCSTK),unit:'шт.',sec:'magistral'}));
+      for(let i=0;i<diams.length-1;i++) rows.push({sel:true,name:'Редукционное кольцо d.'+diams[i]+'x'+diams[i+1],qty:1,unit:'шт.',sec:'magistral'});
+      diams.forEach(d=>rows.push({sel:true,name:'Угол клеевой 90° d.'+d,qty:blocks>0?blocks:0,unit:'шт.',sec:'magistral'}));
+    } else {
+      // ПНД/ПЭ: d<=110 — компрессионная муфта (бухты), d>=125 — пайка встык (только сварной стык, фитинг не нужен)
+      diams.forEach(d=>{
+        if(isWeld(d)) rows.push({sel:true,name:'Стык сварной (пайка встык) d.'+d,qty:Math.ceil(pipeLenByDiam[d]/STICK),unit:'шт.',sec:'magistral'});
+        else rows.push({sel:true,name:'Муфта соединительная компр. d.'+d,qty:Math.ceil(pipeLenByDiam[d]/coil),unit:'шт.',sec:'magistral'});
+      });
+      // Редукции: электросварной редукционный фитинг (зона пайки), иначе компрессионная переходная муфта
+      for(let i=0;i<diams.length-1;i++){ const w=isWeld(diams[i])||isWeld(diams[i+1]); rows.push({sel:true,name:(w?'Фитинг электросварной редукционный d.':'Муфта переходная компр. d.')+diams[i]+'×d.'+diams[i+1],qty:1,unit:'шт.',sec:'magistral'}); }
+      diams.forEach(d=>rows.push({sel:true,name:(isWeld(d)?'Отвод электросварной d.':'Отвод компр. d.')+d,qty:blocks>0?blocks:0,unit:'шт.',sec:'magistral'}));
+    }
     if(lat>0){
       rows.push({sel:true,name:'Старт-коннектор с уплотнительным кольцом 16мм',qty:lat,unit:'шт.',sec:'poliv'});
       rows.push({sel:true,name:'Заглушка-восьмерка 16мм',qty:lat,unit:'шт.',sec:'poliv'});
@@ -1567,7 +1825,7 @@ function KPApp(){
     // Скоба Е40 (крепёж) = длина капельной трубки ÷ шаг крепления, округление вверх. Для подземной трубки галочку снять.
     if(dripLen>0&&clamp>0) rows.push({sel:true,name:'Скоба Е40',qty:Math.ceil(dripLen/clamp),unit:'шт.',sec:'poliv'});
     setFitRows(rows);
-  },[pipeLenByDiam,dripLen,fitCoil,fitBlocks,fitLaterals,fitClamp]);
+  },[pipeLenByDiam,dripLen,fitCoil,fitBlocks,fitLaterals,fitClamp,pipeMat]);
   const setFitRow=useCallback((i,patch)=>setFitRows(rows=>rows.map((r,j)=>j===i?{...r,...patch}:r)),[]);
   // Оценка фитингов как % от стоимости труб
   const pipeCostSum=useMemo(()=>sections.flatMap(s=>s.items).filter(i=>/труб/i.test(i.name||'')).reduce((t,i)=>t+(i.qty||0)*(i.price||0),0),[sections]);
@@ -1582,10 +1840,18 @@ function KPApp(){
     const sel=fitRows.filter(r=>r.sel&&r.qty>0&&String(r.name).trim());
     if(!sel.length) return;
     const buckets={};
-    sel.forEach(r=>{ const it=newItem(r.name,r.unit,r.qty,0,globalMarkup,'','','',''); (buckets[r.sec]||(buckets[r.sec]=[])).push(it); });
+    sel.forEach(r=>{
+      const m=matchPrice(r.name);
+      let it;
+      if(m){ const cp=priceType==='opt'?m.p:(m.r||m.p);
+        it=newItem(r.name,r.unit||m.u||'шт.',r.qty,cp,globalMarkup,m.srcId,m.srcName,m.a||'',m.c||'');
+        if(m.fuzzy) it.fuzzy=true;
+      } else { it=newItem(r.name,r.unit,r.qty,0,globalMarkup,'','','',''); }
+      (buckets[r.sec]||(buckets[r.sec]=[])).push(it);
+    });
     setSections(prev=>prev.map(s=>buckets[s.id]?{...s,items:[...s.items,...buckets[s.id]]}:s));
     setFitRows([]); setShowFit(false);
-  },[fitRows,globalMarkup]);
+  },[fitRows,globalMarkup,matchPrice,priceType]);
   // Автозаполнение блоков и латералей из PDF-чертежа (если есть текстовый слой)
   const fitPdfRef=useRef();
   const [fitPdfMsg,setFitPdfMsg]=useState('');
@@ -1626,6 +1892,7 @@ function KPApp(){
   const grand=sections.reduce((t,s)=>t+secTotal(s),0);
   const logN=logOn?(parseFloat(logistika)||0):0, montN=montOn?(parseFloat(montazh)||0):0, shefN=shefOn?(parseFloat(shefMontazh)||0):0;
   const final=grand+logN+montN+shefN;
+  pdfDataRef.current={sections,kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logN,montN,shefN,shefUnit,notes,grand,final};
   const totalBuiltin=Object.values(BUILTIN_CATALOGS).reduce((t,s)=>t+s.items.length,0);
   const totalExtra=Object.values(extraCatalogs).reduce((t,s)=>t+s.items.length,0);
   const totalCat=totalBuiltin+totalExtra+dynItems.length;
@@ -1667,6 +1934,10 @@ function KPApp(){
             <button onClick={savePDF} disabled={pdfLoading}
               style={{padding:'9px 24px',background:pdfLoading?'#5681a8':'#0B3A63',color:'#fff',border:'none',borderRadius:8,cursor:pdfLoading?'wait':'pointer',fontWeight:600,fontSize:14,minWidth:180}}>
               {pdfLoading ? 'Создаётся PDF…' : 'Скачать PDF'}
+            </button>
+            <button onClick={savePDFShot} disabled={pdfLoading} title="Запасной вариант: PDF из скриншота (если векторный вид не устроит)"
+              style={{padding:'9px 16px',background:'#fff',color:'#6B7785',border:'1px solid #E6EBF0',borderRadius:8,cursor:pdfLoading?'wait':'pointer',fontWeight:600,fontSize:13}}>
+              Скриншот-PDF
             </button>
           </div>
           <div id="kp-print-area" style={{background:'#fff',borderRadius:10,padding:'36px 44px',boxShadow:'0 2px 12px rgba(0,0,0,0.1)'}}>
@@ -1819,6 +2090,14 @@ function KPApp(){
                 <div style={{fontSize:12.5,color:'#666',marginTop:2}}>Подтянет трубы ПЭ, капельную трубку и клапаны с длинами и количеством, разложит по разделам. Цены и фитинги (отводы, переходы, краны) добавьте сами.</div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:12,color:'#6B7785'}}>Монтаж на трубе</span>
+                <div style={{display:'inline-flex',border:'1px solid #B8D4EA',borderRadius:6,overflow:'hidden'}}>
+                  {[['pnd','ПНД'],['pvh','ПВХ']].map(([v,lbl])=>(
+                    <button key={v} onClick={()=>setPipeMat(v)} style={{padding:'7px 14px',border:'none',cursor:'pointer',fontWeight:700,fontSize:13,background:pipeMat===v?'#2C7FB8':'#fff',color:pipeMat===v?'#fff':'#2C7FB8'}}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:12,color:'#6B7785'}}>Округлять длины до</span>
                 <select value={rtfRound} onChange={e=>setRtfRound(+e.target.value)} style={{...S.inp,width:120}}>
                   <option value={0}>без округл.</option>
@@ -1840,8 +2119,8 @@ function KPApp(){
           <div style={{background:'#fff',borderRadius:10,padding:16,marginBottom:14,boxShadow:'0 1px 4px rgba(0,0,0,0.07)',border:'1px solid #E6EBF0'}}>
             <div onClick={()=>setShowFit(v=>!v)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer'}}>
               <div>
-                <div style={{fontWeight:700,fontSize:14,color:'#0B3A63'}}>🔧 Помощник по фитингам</div>
-                <div style={{fontSize:12.5,color:'#666',marginTop:2}}>Предложит отводы, переходы, муфты, старты и крановые группы по диаметрам труб и параметрам проекта. Это оценка — проверьте количества.</div>
+                <div style={{fontWeight:700,fontSize:14,color:'#0B3A63'}}>🔧 Помощник по фитингам <span style={{fontSize:11,fontWeight:600,padding:'2px 8px',borderRadius:10,background:pipeMat==='pvh'?'#E7F1FB':'#EAF3E4',color:pipeMat==='pvh'?'#2C7FB8':'#5a9a47',marginLeft:6}}>{pipeMat==='pvh'?'ПВХ · клеевые':'ПНД · компресс./пайка'}</span></div>
+                <div style={{fontSize:12.5,color:'#666',marginTop:2}}>{pipeMat==='pvh'?'Для ПВХ: муфты клеевые, редукционные кольца, углы клеевые (по прайсу AQUAVIVA). Материал переключается тумблером в панели RTF.':'Для ПНД/ПЭ: муфты компрессионные (бухты), пайка встык и электросварные фитинги (d≥125).'} Это оценка — проверьте количества.</div>
               </div>
               <span style={{fontSize:18,color:'#2C7FB8'}}>{showFit?'▲':'▼'}</span>
             </div>
@@ -1893,6 +2172,7 @@ function KPApp(){
               globalMarkup={globalMarkup} priceType={priceType} hotItems={hotItems}
               onUpdate={onUpdate} onDelete={onDelete} onAddBlank={onAddBlank} onMoveItem={onMoveItem}
               onAddFromSearch={onAddFromSearch} onRemoveHot={onRemoveHot}
+              getAlternatives={getAlternatives} onApplyMatch={onApplyMatch}
               extraCatalogs={mergedExtra} totalCatalogCount={totalCat} allSources={allSources}/>
           ))}
 
