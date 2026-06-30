@@ -826,8 +826,7 @@ async function parseReliefFile(file, onProgress){
     // KML без рельефа (контур «на земле») → берём реальные высоты из модели рельефа (DEM)
     const bbox=_bboxOf(polys,kmlPts);
     if(!isFinite(bbox.minLon)) throw new Error('не удалось определить границы участка');
-    let locs=_demGrid(polys,bbox,90);
-    if(locs.length<4) locs=_demGrid([],bbox,60);
+    let locs=_demGrid([],bbox,100);
     if(locs.length>100){ const step=Math.ceil(locs.length/100); locs=locs.filter((_,i)=>i%step===0); }
     if(onProgress) onProgress('Запрос высот рельефа из модели SRTM ('+locs.length+' точек)…');
     const elev=await fetchElevations(locs);
@@ -867,7 +866,7 @@ function renderReliefCanvas(data, maxW){
   for(let gy=0;gy<H;gy+=cell){ for(let gx=0;gx<W;gx+=cell){
     if(!inPoly(gx+cell/2,gy+cell/2)) continue;
     let num=0,den=0,exact=null;
-    for(let k=0;k<sx.length;k++){ const dx=gx-sx[k],dy=gy-sy[k],d2=dx*dx+dy*dy; if(d2<1.2){exact=sa[k];break;} const w=1/(d2*d2); num+=w*sa[k]; den+=w; }
+    for(let k=0;k<sx.length;k++){ const dx=gx-sx[k],dy=gy-sy[k],d2=dx*dx+dy*dy; if(d2<1.2){exact=sa[k];break;} const w=1/(d2+1e-3); num+=w*sa[k]; den+=w; }
     const v=exact!=null?exact:(den?num/den:min), col=_reliefColor((v-min)/rng);
     for(let yy=gy;yy<Math.min(gy+cell,H);yy++){ for(let xx=gx;xx<Math.min(gx+cell,W);xx++){ const idx=(yy*W+xx)*4; img.data[idx]=col[0];img.data[idx+1]=col[1];img.data[idx+2]=col[2];img.data[idx+3]=255; } }
   }}
@@ -878,6 +877,88 @@ function renderReliefCanvas(data, maxW){
     mark(iMax,'#B3005A'); mark(iMin,'#1AE000'); }
   ctx.strokeStyle='#E6EBF0'; ctx.lineWidth=1; ctx.strokeRect(0.5,0.5,W-1,H-1);
   return {dataURL:cv.toDataURL('image/png'),w:W,h:H};
+}
+
+// 3D-рендер рельефа: наклонная проекция высотной сетки с затенением → {dataURL,w,h}
+function renderRelief3D(data, maxW){
+  const pts=data.pts, polys=(data.polys&&data.polys.length)?data.polys:null;
+  let minLon=Infinity,maxLon=-Infinity,minLat=Infinity,maxLat=-Infinity;
+  pts.forEach(p=>{ if(p.lon<minLon)minLon=p.lon; if(p.lon>maxLon)maxLon=p.lon; if(p.lat<minLat)minLat=p.lat; if(p.lat>maxLat)maxLat=p.lat; });
+  if(polys) polys.forEach(r=>r.forEach(c=>{ if(c[0]<minLon)minLon=c[0]; if(c[0]>maxLon)maxLon=c[0]; if(c[1]<minLat)minLat=c[1]; if(c[1]>maxLat)maxLat=c[1]; }));
+  const padLon=(maxLon-minLon)*0.03||0.0006, padLat=(maxLat-minLat)*0.03||0.0006;
+  minLon-=padLon;maxLon+=padLon;minLat-=padLat;maxLat+=padLat;
+  const midLat=(minLat+maxLat)/2;
+  const lonM=(maxLon-minLon)*111320*Math.cos(midLat*Math.PI/180)||1, latM=(maxLat-minLat)*111320||1;
+  const aspY=latM/lonM;
+  const gxf=lon=>(lon-minLon)/(maxLon-minLon), gyf=lat=>(lat-minLat)/(maxLat-minLat);
+  const sxn=pts.map(p=>gxf(p.lon)), syn=pts.map(p=>gyf(p.lat)), sa=pts.map(p=>p.alt);
+  const minA=data.min,maxA=data.max,rng=(maxA-minA)||1;
+  const N=80, NW=N+1;
+  const idw=(u,v)=>{ let num=0,den=0; for(let k=0;k<sxn.length;k++){ const dx=u-sxn[k],dy=(v-syn[k])*aspY,d2=dx*dx+dy*dy; if(d2<1e-7) return sa[k]; const w=1/(d2+1e-7); num+=w*sa[k]; den+=w; } return den?num/den:minA; };
+  const hAt=(u,v)=>Math.max(0,Math.min(1,(idw(u,v)-minA)/rng));
+  const Hh=new Array(NW*NW);
+  for(let j=0;j<NW;j++) for(let i=0;i<NW;i++){ Hh[j*NW+i]=hAt(i/N,j/N); }
+  // сглаживание высотной сетки — убирает резкие «обрывы», делает плавные склоны
+  for(let pass=0;pass<4;pass++){ const T=Hh.slice();
+    for(let j=0;j<NW;j++) for(let i=0;i<NW;i++){ let s=0,n=0;
+      for(let dj=-1;dj<=1;dj++) for(let di=-1;di<=1;di++){ const jj=j+dj,ii=i+di; if(jj<0||jj>=NW||ii<0||ii>=NW) continue; const wt=(di===0&&dj===0)?4:((di===0||dj===0)?2:1); s+=wt*T[jj*NW+ii]; n+=wt; }
+      Hh[j*NW+i]=s/n; }
+  }
+  const yaw=-35*Math.PI/180, cA=Math.cos(yaw), sA=Math.sin(yaw);
+  const tilt=14*Math.PI/180, cT=Math.cos(tilt), sT=Math.sin(tilt);
+  const zExag=0.18;
+  const proj=(u,v,hN)=>{ const x=(u-0.5), y=(v-0.5)*aspY, z=hN*zExag; const xa=x*cA - y*sA, ya=x*sA + y*cA; return {sx:xa, sy:-(ya*sT)-z*cT, depth:ya}; };
+  // габариты проекции: поверхность + углы основания (z=0)
+  let pminX=Infinity,pmaxX=-Infinity,pminY=Infinity,pmaxY=-Infinity;
+  const acc=p=>{ if(p.sx<pminX)pminX=p.sx; if(p.sx>pmaxX)pmaxX=p.sx; if(p.sy<pminY)pminY=p.sy; if(p.sy>pmaxY)pmaxY=p.sy; };
+  for(let j=0;j<NW;j++) for(let i=0;i<NW;i++) acc(proj(i/N,j/N,Hh[j*NW+i]));
+  [[0,0],[1,0],[1,1],[0,1]].forEach(c=>acc(proj(c[0],c[1],0)));
+  const W=Math.round(maxW||1100), cbW=92, pad=18, plotW=W-cbW;
+  const sc=(plotW-2*pad)/((pmaxX-pminX)||1);
+  let Hpx=Math.round((pmaxY-pminY)*sc+2*pad); Hpx=Math.max(130,Math.min(Hpx,Math.round(W*0.31)));
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=Hpx; const ctx=cv.getContext('2d');
+  const tx=x=>pad+(x-pminX)*sc, ty=y=>pad+(y-pminY)*sc;
+  const lm=Math.hypot(-0.5,-0.72,1), L=[-0.5/lm,-0.72/lm,1/lm];
+  const dxw=1/N, dyw=aspY/N;
+  const RGB=c=>'rgb('+(c[0]|0)+','+(c[1]|0)+','+(c[2]|0)+')';
+  // основание-тень (z=0)
+  const b0=proj(0,0,0),b1=proj(1,0,0),b2=proj(1,1,0),b3=proj(0,1,0);
+  ctx.fillStyle='rgba(180,186,196,0.45)'; ctx.beginPath(); ctx.moveTo(tx(b0.sx),ty(b0.sy)); ctx.lineTo(tx(b1.sx),ty(b1.sy)); ctx.lineTo(tx(b2.sx),ty(b2.sy)); ctx.lineTo(tx(b3.sx),ty(b3.sy)); ctx.closePath(); ctx.fill();
+  // список полигонов (стенки + поверхность) с сортировкой far->near
+  const quads=[];
+  // боковые стенки (юбка) по 4 краям
+  const wall=(u1,v1,u2,v2)=>{ const h1=hAt(u1,v1),h2=hAt(u2,v2);
+    const t1=proj(u1,v1,h1),t2=proj(u2,v2,h2),bb1=proj(u1,v1,0),bb2=proj(u2,v2,0);
+    quads.push({kind:'w',depth:(t1.depth+t2.depth)/2,h:(h1+h2)/2,p:[[tx(t1.sx),ty(t1.sy)],[tx(t2.sx),ty(t2.sy)],[tx(bb2.sx),ty(bb2.sy)],[tx(bb1.sx),ty(bb1.sy)]]}); };
+  for(let i=0;i<N;i++){ wall(i/N,0,(i+1)/N,0); wall(i/N,1,(i+1)/N,1); }
+  for(let j=0;j<N;j++){ wall(0,j/N,0,(j+1)/N); wall(1,j/N,1,(j+1)/N); }
+  // поверхность
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){
+    const h00=Hh[j*NW+i],h10=Hh[j*NW+i+1],h01=Hh[(j+1)*NW+i],h11=Hh[(j+1)*NW+i+1];
+    const p00=proj(i/N,j/N,h00),p10=proj((i+1)/N,j/N,h10),p11=proj((i+1)/N,(j+1)/N,h11),p01=proj(i/N,(j+1)/N,h01);
+    const dzx=((h10+h11)-(h00+h01))/2*zExag, dzy=((h01+h11)-(h00+h10))/2*zExag;
+    let nx=-dzx*dyw, ny=-dzy*dxw, nz=dxw*dyw; const nm=Math.hypot(nx,ny,nz)||1; nx/=nm;ny/=nm;nz/=nm;
+    let br=0.55+0.6*(nx*L[0]+ny*L[1]+nz*L[2]); br=Math.max(0.4,Math.min(1.2,br));
+    quads.push({kind:'s',depth:(p00.depth+p10.depth+p01.depth+p11.depth)/4,h:(h00+h10+h01+h11)/4,br,p:[[tx(p00.sx),ty(p00.sy)],[tx(p10.sx),ty(p10.sy)],[tx(p11.sx),ty(p11.sy)],[tx(p01.sx),ty(p01.sy)]]});
+  }
+  quads.sort((a,b)=>b.depth-a.depth);
+  quads.forEach(q=>{
+    ctx.beginPath(); ctx.moveTo(q.p[0][0],q.p[0][1]); for(let k=1;k<4;k++) ctx.lineTo(q.p[k][0],q.p[k][1]); ctx.closePath();
+    if(q.kind==='s'){ const col=_reliefColor(q.h); ctx.fillStyle=RGB([col[0]*q.br,col[1]*q.br,col[2]*q.br]); ctx.strokeStyle=ctx.fillStyle; ctx.lineWidth=0.8; ctx.fill(); ctx.stroke(); }
+    else { const col=_reliefColor(q.h); const g=ctx.createLinearGradient((q.p[0][0]+q.p[1][0])/2,(q.p[0][1]+q.p[1][1])/2,(q.p[2][0]+q.p[3][0])/2,(q.p[2][1]+q.p[3][1])/2); g.addColorStop(0,RGB([col[0]*0.72,col[1]*0.72,col[2]*0.72])); g.addColorStop(1,RGB([col[0]*0.34,col[1]*0.34,col[2]*0.34])); ctx.fillStyle=g; ctx.strokeStyle=RGB([col[0]*0.3,col[1]*0.3,col[2]*0.3]); ctx.lineWidth=0.5; ctx.fill(); ctx.stroke(); }
+  });
+  // контур поля, «надетый» на поверхность
+  if(polys){ ctx.strokeStyle='rgba(15,20,35,0.85)'; ctx.lineWidth=2.2; polys.forEach(r=>{ ctx.beginPath(); let started=false; r.forEach(c=>{ const u=gxf(c[0]),v=gyf(c[1]); if(u<-0.02||u>1.02||v<-0.02||v>1.02){return;} const p=proj(u,v,hAt(Math.max(0,Math.min(1,u)),Math.max(0,Math.min(1,v)))+0.012); const X=tx(p.sx),Y=ty(p.sy); started?ctx.lineTo(X,Y):ctx.moveTo(X,Y); started=true; }); ctx.stroke(); }); }
+  // цветовая шкала справа (как Irricad)
+  const cbX=W-cbW+14, cbY0=pad+10, cbY1=Hpx-pad-10, barW=18;
+  const grad=ctx.createLinearGradient(0,cbY0,0,cbY1);
+  for(let s=0;s<=12;s++){ const c=_reliefColor(1-s/12); grad.addColorStop(s/12,RGB(c)); }
+  ctx.fillStyle=grad; ctx.fillRect(cbX,cbY0,barW,cbY1-cbY0);
+  ctx.strokeStyle='#9aa3ad'; ctx.lineWidth=1; ctx.strokeRect(cbX,cbY0,barW,cbY1-cbY0);
+  ctx.fillStyle='#2b2b2b'; ctx.font='15px sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
+  for(let s=0;s<=4;s++){ const f=s/4, y=cbY1+(cbY0-cbY1)*f, val=minA+(maxA-minA)*f; ctx.fillText(Math.round(val)+' м', cbX+barW+5, y); }
+  ctx.fillText('Z', cbX, cbY0-12);
+  return {dataURL:cv.toDataURL('image/png'),w:W,h:Hpx};
 }
 
 // ===== Irrigation Data (технические параметры из проектной документации) =====
@@ -1001,9 +1082,8 @@ function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispol
           </table>
         );
         const showRelief=reliefOn&&relief&&relief.img;
-        const cardCols=showRelief?Math.min(cards.length,2):cards.length;
         const cardsGrid=cards.length>0&&(
-          <div style={{display:'grid',gridTemplateColumns:'repeat('+(cardCols||1)+',1fr)',gap:12,marginTop:showRelief?14:20}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat('+(cards.length||1)+',1fr)',gap:12,marginTop:20}}>
             {cards.map((c,i)=>(
               <div key={i} style={{border:'1px solid '+DIV,borderRadius:6,padding:'14px 14px 12px',position:'relative',overflow:'hidden'}}>
                 <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:c.c}}></div>
@@ -1013,34 +1093,29 @@ function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispol
             ))}
           </div>
         );
-        if(!showRelief){
-          return (<div><div style={{marginTop:22}}>{reqTable}</div>{cardsGrid}</div>);
-        }
-        const reliefCard=(
-          <div style={{border:'1px solid '+DIV,borderRadius:8,padding:14,height:'100%',boxSizing:'border-box'}}>
-            <div style={{fontSize:13,fontWeight:700,color:PRIMARY}}>Карта рельефа участка</div>
-            {relief.name&&<div style={{fontSize:10.5,color:MUTED,marginTop:1,marginBottom:6,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{relief.name}</div>}
-            <img src={relief.img} alt="Карта рельефа" style={{width:'100%',height:'auto',display:'block',borderRadius:4,border:'1px solid '+DIV,marginTop:relief.name?0:6}}/>
-            <div style={{height:8,borderRadius:4,marginTop:10,background:'linear-gradient(90deg,#39FF14,#96FF00,#F0FF00,#FFAA00,#FF4620,#DC145A)'}}></div>
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:MUTED,marginTop:3}}>
-              <span>{_relNum(relief.min)} м</span><span>{_relNum(relief.max)} м</span>
-            </div>
-            <div style={{marginTop:10}}>
-              {[['Перепад высот',_relNum(relief.diff)+' м',PRIMARY],['Мин. высота',_relNum(relief.min)+' м',ACCENT],['Макс. высота',_relNum(relief.max)+' м',SECOND]].map((s,i)=>(
-                <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',padding:'5px 0',borderBottom:'1px solid '+DIV}}>
-                  <span style={{fontSize:11.5,color:MUTED}}>{s[0]}</span>
-                  <span style={{fontSize:13.5,fontWeight:700,color:s[2]}}>{s[1]}</span>
-                </div>
-              ))}
+        const base=(<div><div style={{marginTop:22}}>{reqTable}</div>{cardsGrid}</div>);
+        if(!showRelief) return base;
+        const is3d=(relief.mode||'3d')==='3d';
+        const reliefFull=(
+          <div style={{marginTop:26}}>
+            <div style={{fontSize:18,fontWeight:600,color:PRIMARY,letterSpacing:'-0.3px'}}>Карта рельефа участка</div>
+            <div style={{fontSize:12,color:MUTED,marginBottom:12}}>Перепад высот по данным модели рельефа{relief.name?(' · '+relief.name):''}</div>
+            <div style={{border:'1px solid '+DIV,borderRadius:8,padding:16}}>
+              <img src={relief.img} alt="Карта рельефа" style={{width:'100%',height:'auto',display:'block',borderRadius:4}}/>
+              {!is3d&&<div style={{height:9,borderRadius:4,marginTop:12,background:'linear-gradient(90deg,#39FF14,#96FF00,#F0FF00,#FFAA00,#FF4620,#DC145A)'}}></div>}
+              {!is3d&&<div style={{display:'flex',justifyContent:'space-between',fontSize:10.5,color:MUTED,marginTop:3}}><span>{_relNum(relief.min)} м</span><span>{_relNum(relief.max)} м</span></div>}
+              <div style={{display:'flex',gap:14,marginTop:14}}>
+                {[['Перепад высот',_relNum(relief.diff)+' м',PRIMARY],['Мин. высота',_relNum(relief.min)+' м',ACCENT],['Макс. высота',_relNum(relief.max)+' м',SECOND]].map((s,i)=>(
+                  <div key={i} style={{flex:1,border:'1px solid '+DIV,borderRadius:6,padding:'10px 14px'}}>
+                    <div style={{fontSize:10.5,color:MUTED,textTransform:'uppercase',letterSpacing:'0.4px'}}>{s[0]}</div>
+                    <div style={{fontSize:18,fontWeight:700,color:s[2],marginTop:4}}>{s[1]}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         );
-        return (
-          <div style={{display:'flex',gap:18,marginTop:22,alignItems:'stretch'}}>
-            <div style={{flex:'1 1 55%',minWidth:0}}>{reqTable}{cardsGrid}</div>
-            <div style={{flex:'1 1 45%',minWidth:0}}>{reliefCard}</div>
-          </div>
-        );
+        return (<div>{base}{reliefFull}</div>);
       })()}
 
       {/* ===== ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ СИСТЕМЫ (Irrigation Data) ===== */}
@@ -1214,85 +1289,60 @@ function makeVectorPdf(d){
   const cards=[['Площадь',d.projArea,ACCENT],['Культура',d.projCulture,SECOND],['Регион',d.projRegion,ACCENT],['Источник воды',d.projWater,SECOND]].filter(c=>c[1]&&String(c[1]).trim());
   const RELIEF = d.reliefOn && d.relief && d.relief.img;
 
+  // Реквизиты (4 колонки) + карточки (во всю ширину)
+  const reqRows=[
+    ['Заказчик:', d.zakazchik||'—', (d.projNum?'№ проекта:':'Объект:'), d.projNum||d.object||'—'],
+    ['Исполнитель:', d.ispolnitel||'—', 'Телефон:', d.phone||'—'],
+    ['Дата:', dateStr, 'Тип цен:', d.typeCeny||''],
+  ];
+  const colA=ML, colB=ML+24, colC=ML+98, colD=ML+98+22;
+  reqRows.forEach(r=>{
+    setF('normal',8.5,MUTED); doc.text(String(r[0]),colA,y);
+    setF('bold',8.5,TEXT); doc.text(String(r[1]),colB,y);
+    setF('normal',8.5,MUTED); doc.text(String(r[2]),colC,y);
+    setF('bold',8.5,TEXT); doc.text(String(r[3]),colD,y);
+    y+=6.2;
+  });
+  y+=5;
+  if(cards.length){
+    const gap=4, cw=(CW-gap*(cards.length-1))/cards.length, ch=18, r=1.6;
+    cards.forEach((c,i)=>{ const x=ML+i*(cw+gap);
+      fill(c[2]); doc.roundedRect(x,y,cw,ch,r,r,'F');
+      fill([255,255,255]); doc.roundedRect(x,y+0.9,cw,ch-0.9,r,r,'F');
+      draw(DIV); doc.setLineWidth(0.15); doc.roundedRect(x,y,cw,ch,r,r,'S');
+      setF('normal',7.5,MUTED); doc.text(String(c[0]).toUpperCase(),x+3.5,y+7);
+      setF('bold',12.75,PRIMARY); doc.text(SAFE(c[1]),x+3.5,y+13.5);
+    });
+    y+=ch+10;
+  }
+
+  // КАРТА РЕЛЬЕФА — во всю ширину под реквизитами
   if(RELIEF){
-    const gapC=8, LCW=CW*0.55, RX=ML+LCW+gapC, RCW=CW-LCW-gapC;
-    let ly=y, ry=y;
-    // --- ЛЕВО: реквизиты в одну колонку + карточки 2-в-ряд ---
-    const pairs=[
-      ['Заказчик:', d.zakazchik||'—'],
-      [(d.projNum?'№ проекта:':'Объект:'), d.projNum||d.object||'—'],
-      ['Исполнитель:', d.ispolnitel||'—'],
-      ['Телефон:', d.phone||'—'],
-      ['Дата:', dateStr],
-      ['Тип цен:', d.typeCeny||''],
-    ];
-    const lblW=24;
-    pairs.forEach(p=>{
-      setF('normal',8.5,MUTED); doc.text(String(p[0]),ML,ly);
-      setF('bold',8.5,TEXT); doc.text(String(p[1]),ML+lblW,ly,{maxWidth:LCW-lblW});
-      ly+=6.2;
-    });
-    ly+=3.5;
-    if(cards.length){
-      const cg=4, ccw=(LCW-cg)/2, cch=16, cr=1.4;
-      cards.forEach((c,i)=>{ const cx=ML+(i%2)*(ccw+cg), cyy=ly+Math.floor(i/2)*(cch+cg);
-        fill(c[2]); doc.roundedRect(cx,cyy,ccw,cch,cr,cr,'F');
-        fill([255,255,255]); doc.roundedRect(cx,cyy+0.8,ccw,cch-0.8,cr,cr,'F');
-        draw(DIV); doc.setLineWidth(0.15); doc.roundedRect(cx,cyy,ccw,cch,cr,cr,'S');
-        setF('normal',7,MUTED); doc.text(String(c[0]).toUpperCase(),cx+3,cyy+6);
-        setF('bold',11,PRIMARY); doc.text(SAFE(c[1]),cx+3,cyy+12,{maxWidth:ccw-6});
-      });
-      ly+=Math.ceil(cards.length/2)*(cch+cg);
+    const R=d.relief, is3d=(R.mode||'3d')==='3d', rn=n=>_sp(_relNum(n));
+    let iw=CW, ih=CW*((R.h||1)/(R.w||1));
+    const maxIh=is3d?118:132; if(ih>maxIh){ ih=maxIh; iw=ih*((R.w||1)/(R.h||1)); if(iw>CW){iw=CW;ih=iw*((R.h||1)/(R.w||1));} }
+    const blockH=10+ih+(is3d?0:8)+16;
+    if(y+blockH>286){ doc.addPage(); y=18; }
+    setF('bold',13.5,PRIMARY); doc.text('Карта рельефа участка',ML,y); y+=5;
+    setF('normal',9,MUTED); doc.text(SAFE('Перепад высот по данным модели рельефа'+(R.name?(' · '+R.name):'')),ML,y); y+=4.5;
+    const ix=ML+(CW-iw)/2;
+    try{ doc.addImage(R.img,'PNG',ix,y,iw,ih); }catch(e){}
+    draw(DIV); doc.setLineWidth(0.2); doc.rect(ix,y,iw,ih,'S');
+    y+=ih+(is3d?5:4);
+    if(!is3d){
+      const lgW=CW, lgH=3, steps=60;
+      for(let i=0;i<steps;i++){ fill(_reliefColor(i/(steps-1))); doc.rect(ML+lgW*i/steps,y,lgW/steps+0.4,lgH,'F'); }
+      draw(DIV); doc.setLineWidth(0.15); doc.rect(ML,y,lgW,lgH,'S'); y+=lgH+3;
+      setF('normal',7,MUTED); doc.text(rn(R.min)+' м',ML,y); doc.text(rn(R.max)+' м',ML+lgW,y,{align:'right'}); y+=4.5;
     }
-    // --- ПРАВО: карта рельефа с перепадом высот ---
-    const R=d.relief;
-    setF('bold',9.75,PRIMARY); doc.text('Карта рельефа участка',RX,ry); ry+=4.8;
-    if(R.name){ setF('normal',7.5,MUTED); doc.text(SAFE(String(R.name)),RX,ry,{maxWidth:RCW}); ry+=3.8; } else { ry+=0.6; }
-    let iw=RCW, ih=RCW*((R.h||1)/(R.w||1)); if(ih>60){ ih=60; iw=ih*((R.w||1)/(R.h||1)); if(iw>RCW){iw=RCW;ih=iw*((R.h||1)/(R.w||1));} }
-    try{ doc.addImage(R.img,'PNG',RX,ry,iw,ih); }catch(e){}
-    draw(DIV); doc.setLineWidth(0.2); doc.rect(RX,ry,iw,ih,'S');
-    ry+=ih+4;
-    // легенда-градиент
-    const lgW=RCW, lgH=2.8, steps=44;
-    for(let i=0;i<steps;i++){ fill(_reliefColor(i/(steps-1))); doc.rect(RX+lgW*i/steps,ry,lgW/steps+0.4,lgH,'F'); }
-    draw(DIV); doc.setLineWidth(0.15); doc.rect(RX,ry,lgW,lgH,'S');
-    ry+=lgH+3;
-    const rn=n=>_sp(_relNum(n));
-    setF('normal',6.8,MUTED); doc.text(rn(R.min)+' м',RX,ry); doc.text(rn(R.max)+' м',RX+lgW,ry,{align:'right'});
-    ry+=5;
-    [['Перепад высот',rn(R.diff)+' м',PRIMARY],['Мин. высота',rn(R.min)+' м',ACCENT],['Макс. высота',rn(R.max)+' м',SECOND]].forEach(s=>{
-      setF('normal',8,MUTED); doc.text(s[0],RX,ry);
-      setF('bold',9.25,s[2]); doc.text(s[1],RX+RCW,ry,{align:'right'});
-      draw(DIV); doc.setLineWidth(0.12); doc.line(RX,ry+1.8,RX+RCW,ry+1.8);
-      ry+=6.4;
+    const st=[['Перепад высот',rn(R.diff)+' м',PRIMARY],['Мин. высота',rn(R.min)+' м',ACCENT],['Макс. высота',rn(R.max)+' м',SECOND]];
+    const sg=4, sw=(CW-sg*2)/3, sh=14, sr=1.4;
+    st.forEach((s,i)=>{ const sx=ML+i*(sw+sg);
+      fill([255,255,255]); doc.roundedRect(sx,y,sw,sh,sr,sr,'F'); draw(DIV); doc.setLineWidth(0.2); doc.roundedRect(sx,y,sw,sh,sr,sr,'S');
+      setF('normal',7,MUTED); doc.text(String(s[0]).toUpperCase(),sx+3.5,y+5.5);
+      setF('bold',11.5,s[2]); doc.text(s[1],sx+3.5,y+11);
     });
-    y=Math.max(ly,ry)+6;
-  } else {
-    const reqRows=[
-      ['Заказчик:', d.zakazchik||'—', (d.projNum?'№ проекта:':'Объект:'), d.projNum||d.object||'—'],
-      ['Исполнитель:', d.ispolnitel||'—', 'Телефон:', d.phone||'—'],
-      ['Дата:', dateStr, 'Тип цен:', d.typeCeny||''],
-    ];
-    const colA=ML, colB=ML+24, colC=ML+98, colD=ML+98+22;
-    reqRows.forEach(r=>{
-      setF('normal',8.5,MUTED); doc.text(String(r[0]),colA,y);
-      setF('bold',8.5,TEXT); doc.text(String(r[1]),colB,y);
-      setF('normal',8.5,MUTED); doc.text(String(r[2]),colC,y);
-      setF('bold',8.5,TEXT); doc.text(String(r[3]),colD,y);
-      y+=6.2;
-    });
-    y+=5;
-    if(cards.length){
-      const gap=4, cw=(CW-gap*(cards.length-1))/cards.length, ch=18, r=1.6;
-      cards.forEach((c,i)=>{ const x=ML+i*(cw+gap);
-        fill(c[2]); doc.roundedRect(x,y,cw,ch,r,r,'F');
-        fill([255,255,255]); doc.roundedRect(x,y+0.9,cw,ch-0.9,r,r,'F');
-        draw(DIV); doc.setLineWidth(0.15); doc.roundedRect(x,y,cw,ch,r,r,'S');
-        setF('normal',7.5,MUTED); doc.text(String(c[0]).toUpperCase(),x+3.5,y+7);
-        setF('bold',12.75,PRIMARY); doc.text(SAFE(c[1]),x+3.5,y+13.5);
-      });
-      y+=ch+10;
-    }
+    y+=sh+8;
   }
 
   // ТЕХНИЧЕСКИЕ ПАРАМЕТРЫ СИСТЕМЫ (Irrigation Data)
@@ -1584,7 +1634,9 @@ function KPApp(){
   const [reliefOn,setReliefOn]=useState(false);
   const [relief,setRelief]=useState(null); // {img,w,h,min,max,diff,count,name}
   const [reliefMsg,setReliefMsg]=useState('');
+  const [relief3d,setRelief3d]=useState(true);
   const reliefRef=useRef();
+  const setReliefMode=m=>{ setRelief3d(m==='3d'); setRelief(r=>{ if(!r)return r; const img=m==='3d'?(r.img3d||r.img):(r.img2d||r.img); const w=m==='3d'?(r.w3d||r.w):(r.w2d||r.w); const h=m==='3d'?(r.h3d||r.h):(r.h2d||r.h); return {...r,mode:m,img,w,h}; }); };
   const handleRelief=async e=>{
     const file=e.target.files&&e.target.files[0]; if(!file)return; e.target.value='';
     setReliefMsg('Обработка файла…');
@@ -1592,8 +1644,10 @@ function KPApp(){
       const data=await parseReliefFile(file,msg=>setReliefMsg(msg));
       if(!(data.max>data.min)){ setRelief(null); setReliefMsg('Ошибка: на участке не обнаружен перепад высот (рельеф ровный или нет данных модели для этой местности).'); return; }
       setReliefMsg('Построение карты…');
-      const r=renderReliefCanvas(data,720);
-      setRelief({img:r.dataURL,w:r.w,h:r.h,min:data.min,max:data.max,diff:data.diff,count:data.count||(data.pts&&data.pts.length)||0,name:data.name||String(file.name).replace(/\.(kml|kmz)$/i,''),source:data.source});
+      const r2=renderReliefCanvas(data,900);
+      const r3=renderRelief3D(data,1100);
+      const mode=relief3d?'3d':'2d', act=mode==='3d'?r3:r2;
+      setRelief({img:act.dataURL,w:act.w,h:act.h, img2d:r2.dataURL,w2d:r2.w,h2d:r2.h, img3d:r3.dataURL,w3d:r3.w,h3d:r3.h, mode, min:data.min,max:data.max,diff:data.diff,count:data.count||(data.pts&&data.pts.length)||0,name:data.name||String(file.name).replace(/\.(kml|kmz)$/i,''),source:data.source});
       setReliefOn(true);
       setReliefMsg(data.source==='dem'?('Готово. Высоты из модели рельефа SRTM, точек: '+(data.count||0)):'Готово. Высоты взяты из KML.');
       try{ const tg=window.Telegram&&window.Telegram.WebApp; if(tg&&tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success'); }catch(_){}
@@ -2547,6 +2601,11 @@ function KPApp(){
                   <div>Мин: {_relNum(relief.min)} м · Макс: {_relNum(relief.max)} м</div>
                   <div style={{color:'#6B7785',fontSize:12}}>Точек: {relief.count}{relief.name?' · '+relief.name:''}</div>
                 </div>
+                {relief.img3d&&<div style={{display:'flex',border:'1px solid #CFE0BD',borderRadius:6,overflow:'hidden'}}>
+                  {['2d','3d'].map(m=>(
+                    <div key={m} onClick={()=>setReliefMode(m)} style={{padding:'6px 14px',fontSize:13,fontWeight:700,cursor:'pointer',background:(relief.mode||'3d')===m?'#7FAF4D':'#fff',color:(relief.mode||'3d')===m?'#fff':'#5a9a47'}}>{m==='2d'?'2D':'3D'}</div>
+                  ))}
+                </div>}
                 <button onClick={()=>{ setRelief(null); setReliefOn(false); setReliefMsg(''); }} style={{padding:'6px 12px',background:'#fde8e8',color:'#c0392b',border:'none',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:600}}>Удалить</button>
               </div>
             )}
