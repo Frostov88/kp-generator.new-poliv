@@ -1003,7 +1003,7 @@ function parseIrrData(text){
   const out={}; let found=0;
   IRR_FIELDS.forEach(f=>{
     const m=f.re.exec(t); if(!m) return;
-    const tail=t.slice(m.index+m[0].length, m.index+m[0].length+70);
+    const tail=t.slice(m.index+m[0].length, m.index+m[0].length+90);
     if(f.text){ const w=tail.replace(/^[\s:.,–\-|]+/,'').split(/[\n\r\t]|\s{2,}/)[0].trim(); if(w&&!/^[\d.,]/.test(w)&&!/^(га|м|л\/ч|мм|ч|день|№)\b/i.test(w)&&w.length<=40){ out[f.k]=w; found++; } }
     else { const nm=tail.match(/(?:^|[\s|:.])(-?\d+(?:[.,]\d+)?)(?=[\s|]|$)/); if(nm){ out[f.k]=nm[1].replace(',', '.'); found++; } }
   });
@@ -1011,7 +1011,52 @@ function parseIrrData(text){
   return out;
 }
 
-function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispolnitel, phone, projNum, projArea, projCulture, projRegion, projWater, logN, montN, shefN, shefUnit, notes, grand, final, reliefOn, relief, irrOn, irr }) {
+// Ленивая загрузка внешнего скрипта
+function _loadScript(src){ return new Promise((res,rej)=>{ try{ if(window.Tesseract&&/tesseract/i.test(src)) return res(); const ex=Array.prototype.slice.call(document.scripts).some(s=>s.src===src); if(ex) return res(); }catch(e){} const s=document.createElement('script'); s.src=src; s.async=true; s.onload=()=>res(); s.onerror=()=>rej(new Error('не удалось загрузить '+src)); document.head.appendChild(s); }); }
+async function _ensureTesseract(){ if(window.Tesseract) return window.Tesseract; await _loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'); if(!window.Tesseract) throw new Error('OCR-движок не загрузился (Tesseract)'); return window.Tesseract; }
+
+// OCR PDF: рендерим страницы в картинку и распознаём текст (для PDF без текстового слоя)
+async function _ocrPdf(file, onProgress){
+  const pdfjsLib=window.pdfjsLib; if(!pdfjsLib) throw new Error('PDF-движок недоступен');
+  if(!pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  if(onProgress) onProgress('Загрузка модуля распознавания (один раз, ~несколько МБ)…');
+  const T=await _ensureTesseract();
+  const ab=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+  const maxPages=Math.min(pdf.numPages,4);
+  let full='';
+  for(let p=1;p<=maxPages;p++){
+    if(onProgress) onProgress('Рендер страницы '+p+'/'+maxPages+'…');
+    const page=await pdf.getPage(p);
+    const v1=page.getViewport({scale:1});
+    const scale=Math.max(1.6,Math.min(3, 3000/Math.max(v1.width,v1.height)));
+    const vp=page.getViewport({scale});
+    const cv=document.createElement('canvas'); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height);
+    const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,cv.width,cv.height);
+    await page.render({canvasContext:ctx,viewport:vp}).promise;
+    const res=await T.recognize(cv,'rus+eng',{ logger:m=>{ if(m&&m.status==='recognizing text'&&onProgress) onProgress('Распознавание '+Math.round((m.progress||0)*100)+'% (стр. '+p+'/'+maxPages+')…'); } });
+    full+='\n'+((res&&res.data&&res.data.text)||'');
+    try{ if(parseIrrData(full).__found>=4) break; }catch(e){}
+  }
+  return full;
+}
+
+// Площадь участка в гектарах из строки вида «95 га» / «197,49 га»
+function _areaHa(v){ const n=parseFloat(String(v==null?'':v).replace(',','.').replace(/[^0-9.]/g,'')); return isFinite(n)&&n>0?n:0; }
+// Гидравлическая сводка из Irrigation Data → массив [подпись, значение] или null
+function _hydraulics(irr){
+  if(!irr) return null;
+  const num=x=>{ const n=parseFloat(String(x==null?'':x).replace(',','.')); return isFinite(n)?n:null; };
+  const sp=num(irr.srcPress), mf=num(irr.maxFlow), perf=num(irr.sysPerf), dw=num(irr.dailyWater);
+  const rows=[];
+  if(sp!=null&&sp>0){ rows.push(['Требуемое давление источника', _relNum(sp)+' м']); rows.push(['Рекомендуемый напор насоса', '≥ '+_relNum(Math.ceil(sp*1.15))+' м']); }
+  if(mf!=null&&mf>0){ rows.push(['Максимальный расход системы', _relNum(mf)+' м³/ч']); rows.push(['Подача насоса и фильтрации', '≥ '+_relNum(mf)+' м³/ч']); }
+  if(perf!=null&&perf>0) rows.push(['Производительность системы', _relNum(perf)+' мм/ч']);
+  if(dw!=null&&dw>0) rows.push(['Суточное водопотребление', _relNum(dw)+' мм/сут']);
+  return rows.length?rows:null;
+}
+
+function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispolnitel, phone, projNum, projArea, projCulture, projRegion, projWater, logN, montN, shefN, shefUnit, notes, grand, final, reliefOn, relief, irrOn, irr, perHaOn, hydroOn }) {
   let row=0;
   const money=n=>{ n=parseFloat(n)||0; if(!n)return''; return n.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+'\u00A0\u20BD'; };
   const qtyF=n=>{ n=parseFloat(n)||0; if(!n)return''; return n%1===0?n.toLocaleString('ru-RU'):n.toLocaleString('ru-RU',{maximumFractionDigits:1}); };
@@ -1130,26 +1175,17 @@ function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispol
         const rows=IRR_FIELDS.map(f=>({f,v:irr[f.k]})).filter(x=>x.v!=null&&String(x.v).trim()!=='');
         if(!rows.length) return null;
         const fmt=x=>{ const s=x.f.text?String(x.v):_irrNum(x.v); return s+(x.f.unit?(' '+x.f.unit):''); };
-        const mid=Math.ceil(rows.length/2);
-        const col=arr=>(
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-            <tbody>
-              {arr.map((x,i)=>(
-                <tr key={i} style={{borderBottom:'1px solid '+DIV}}>
-                  <td style={{padding:'6px 8px 6px 0',color:MUTED}}>{x.f.label}</td>
-                  <td style={{padding:'6px 0',textAlign:'right',fontWeight:700,color:PRIMARY,whiteSpace:'nowrap'}}>{fmt(x)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        );
         return (
           <div style={{marginTop:28}}>
             <div style={{fontSize:18,fontWeight:600,color:PRIMARY,letterSpacing:'-0.3px'}}>Технические параметры системы</div>
             <div style={{fontSize:12,color:MUTED,marginBottom:14}}>Расчётные показатели орошения по проектной документации</div>
-            <div style={{display:'flex',gap:28,border:'1px solid '+DIV,borderRadius:8,padding:'6px 18px'}}>
-              <div style={{flex:1,minWidth:0}}>{col(rows.slice(0,mid))}</div>
-              <div style={{flex:1,minWidth:0}}>{col(rows.slice(mid))}</div>
+            <div style={{border:'1px solid '+DIV,borderRadius:8,padding:'6px 20px',display:'grid',gridTemplateColumns:'1fr 1fr',columnGap:40}}>
+              {rows.map((x,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:14,padding:'7px 0',borderBottom:i<rows.length-2?'1px solid '+DIV:'none'}}>
+                  <span style={{fontSize:11.5,color:MUTED,lineHeight:1.3}}>{x.f.label}</span>
+                  <span style={{fontSize:12.5,fontWeight:700,color:PRIMARY,whiteSpace:'nowrap'}}>{fmt(x)}</span>
+                </div>
+              ))}
             </div>
           </div>
         );
@@ -1227,6 +1263,26 @@ function PrintView({ sections, kpNum, kpDate, typeCeny, zakazchik, object, ispol
         <div style={{fontSize:13,fontWeight:500,letterSpacing:'0.5px',opacity:0.85,textTransform:'uppercase'}}>Итого по проекту</div>
         <div style={{fontSize:28,fontWeight:700,letterSpacing:'-0.6px',whiteSpace:'nowrap'}}>{money(grandFinal)}</div>
       </div>
+      {perHaOn && _areaHa(projArea)>0 && (
+        <div style={{marginTop:8,display:'flex',justifyContent:'space-between',alignItems:'baseline',padding:'8px 26px',background:'#EEF4F9',borderRadius:8}}>
+          <span style={{fontSize:12,color:MUTED,textTransform:'uppercase',letterSpacing:'0.4px'}}>Стоимость на 1 га ({_relNum(_areaHa(projArea))} га)</span>
+          <span style={{fontSize:16,fontWeight:700,color:PRIMARY,whiteSpace:'nowrap'}}>{money(grandFinal/_areaHa(projArea))}</span>
+        </div>
+      )}
+      {hydroOn && _hydraulics(irr) && (
+        <div style={{marginTop:16}}>
+          <div style={{fontSize:15,fontWeight:600,color:PRIMARY}}>Гидравлические параметры системы</div>
+          <div style={{fontSize:11,color:MUTED,marginBottom:8}}>Рекомендации по насосной и фильтрации на основе расчёта</div>
+          <div style={{border:'1px solid '+DIV,borderRadius:8,padding:'4px 18px',display:'grid',gridTemplateColumns:'1fr 1fr',columnGap:40}}>
+            {_hydraulics(irr).map((r,i,a)=>(
+              <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:14,padding:'7px 0',borderBottom:i<a.length-2?'1px solid '+DIV:'none'}}>
+                <span style={{fontSize:11,color:MUTED,lineHeight:1.25}}>{r[0]}</span>
+                <span style={{fontSize:12.5,fontWeight:700,color:PRIMARY,whiteSpace:'nowrap'}}>{r[1]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {notes&&<div style={{marginTop:16,fontSize:11.5,color:MUTED}}><b style={{color:TEXT}}>Примечания:</b> {notes}</div>}
 
@@ -1279,6 +1335,9 @@ function makeXlsx(d){
   const totalRows=[];
   totals.forEach(t=>{ totalRows.push(push(['',t[0],'','','',t[1]])); });
   const grandRow=push(['','ИТОГО ПО ПРОЕКТУ','','','',d.final||d.grand||0]);
+  let perHaRow=-1;
+  if(d.perHaOn){ const ha=_areaHa(d.projArea); if(ha>0){ perHaRow=push(['','Стоимость на 1 га ('+_relNum(ha)+' га)','','','',(d.final||d.grand||0)/ha]); } }
+  if(d.hydroOn){ const hrows=_hydraulics(d.irr); if(hrows){ push([]); const hr=push(['Гидравлические параметры системы']); merges.push({s:{r:hr,c:0},e:{r:hr,c:5}}); hrows.forEach(rw=>push([rw[0], rw[1], '', '', '', ''])); } }
   if(d.notes&&String(d.notes).trim()){ push([]); const nr=push(['Примечания: '+d.notes]); merges.push({s:{r:nr,c:0},e:{r:nr,c:5}}); }
 
   const ws=X.utils.aoa_to_sheet(rows);
@@ -1290,6 +1349,7 @@ function makeXlsx(d){
   subtotalRows.forEach(rr=>setFmt(rr,5,'#,##0.00'));
   totalRows.forEach(rr=>setFmt(rr,5,'#,##0.00'));
   setFmt(grandRow,5,'#,##0.00');
+  if(perHaRow>=0) setFmt(perHaRow,5,'#,##0.00');
   const wb=X.utils.book_new();
   X.utils.book_append_sheet(wb,ws,'КП');
   return wb;
@@ -1301,7 +1361,7 @@ function makeVectorPdf(d){
   if(typeof doc.autoTable!=='function') throw new Error('Плагин таблиц (autoTable) не загрузился — проверьте интернет');
   // Встроенный шрифт DejaVu — сабсет: нет U+00A0 (нераз. пробел), «·» (U+00B7), «×» (U+00D7).
   // jsPDF обрывает строку на отсутствующем глифе — поэтому заменяем их на присутствующие.
-  const SAFE=s=>String(s==null?'':s).replace(/[\u00A0\u202F\u2009]/g,' ').replace(/\u00D7/g,'x').replace(/[\u00B7\u2022]/g,'-');
+  const SAFE=s=>String(s==null?'':s).replace(/[\u00A0\u202F\u2009]/g,' ').replace(/\u00D7/g,'x').replace(/\u00B3/g,'3').replace(/\u00B2/g,'2').replace(/[\u00B7\u2022]/g,'-');
   const _docText=doc.text.bind(doc);
   doc.text=function(){ const a=Array.prototype.slice.call(arguments); if(typeof a[0]==='string')a[0]=SAFE(a[0]); else if(Array.isArray(a[0]))a[0]=a[0].map(SAFE); return _docText.apply(null,a); };
   const FONT='Inter';
@@ -1503,6 +1563,31 @@ function makeVectorPdf(d){
   doc.text('ИТОГО ПО ПРОЕКТУ',ML+8,y+12); doc.setCharSpace(0);
   setF('bold',20,[255,255,255]); doc.text(money(d.final||d.grand),RIGHT-8,y+12.6,{align:'right'});
   y+=20+9;
+
+  // СТОИМОСТЬ ЗА 1 ГА (опц.)
+  if(d.perHaOn){ const ha=_areaHa(d.projArea); if(ha>0){
+    need(12);
+    fill(_hexRgb('#EEF4F9')); doc.roundedRect(ML,y,CW,10,2,2,'F');
+    setF('normal',8.5,MUTED); doc.text('Стоимость на 1 га ('+SAFE(_relNum(ha))+' га)',ML+6,y+6.4);
+    setF('bold',11,PRIMARY); doc.text(money((d.final||d.grand)/ha),RIGHT-6,y+6.6,{align:'right'});
+    y+=10+8;
+  }}
+
+  // ГИДРАВЛИЧЕСКАЯ СВОДКА (опц.)
+  if(d.hydroOn){ const hrows=_hydraulics(d.irr); if(hrows){
+    need(16+Math.ceil(hrows.length/2)*6.4);
+    setF('bold',13.5,PRIMARY); doc.text('Гидравлические параметры системы',ML,y); y+=5;
+    setF('normal',9,MUTED); doc.text('Рекомендации по насосной и фильтрации на основе расчёта',ML,y); y+=4;
+    const mid=Math.ceil(hrows.length/2), gapM=10, cwm=(CW-gapM)/2, y0=y;
+    const drawCol=(arr,x)=>{ let yy=y0; arr.forEach(it=>{
+      setF('normal',8.5,MUTED); doc.text(SAFE(it[0]),x,yy,{maxWidth:cwm-30});
+      setF('bold',8.5,PRIMARY); doc.text(SAFE(_sp(it[1])),x+cwm,yy,{align:'right'});
+      draw(DIV); doc.setLineWidth(0.12); doc.line(x,yy+1.9,x+cwm,yy+1.9); yy+=6.4;
+    }); return yy; };
+    const b1=drawCol(hrows.slice(0,mid),ML);
+    const b2=drawCol(hrows.slice(mid),ML+cwm+gapM);
+    y=Math.max(b1,b2)+6;
+  }}
 
   // ПРИМЕЧАНИЯ
   if(d.notes&&String(d.notes).trim()){
@@ -1717,6 +1802,9 @@ function KPApp(){
   const [irrMsg,setIrrMsg]=useState('');
   const [showIrr,setShowIrr]=useState(false);
   const irrRef=useRef();
+  const [perHaOn,setPerHaOn]=useState(false);
+  const [hydroOn,setHydroOn]=useState(false);
+  const [validate,setValidate]=useState(null);
   const setIrrField=(k,v)=>setIrr(p=>({...p,[k]:v}));
   const applyIrr=parsed=>{
     setIrr(prev=>{ const next={...prev}; IRR_FIELDS.forEach(f=>{ if(parsed[f.k]!=null&&String(parsed[f.k]).trim()!=='') next[f.k]=parsed[f.k]; }); return next; });
@@ -1737,11 +1825,17 @@ function KPApp(){
         let parts=[];
         for(let p=1;p<=pdf.numPages;p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent(); parts.push(tc.items.map(i=>i.str).join(' ')); }
         text=parts.join('\n');
-        if(text.replace(/\s/g,'').length<10) throw new Error('в PDF нет текстового слоя — это векторный чертёж. Выгрузите из Irricad текстовый отчёт Irrigation Data (RTF/TXT) или заполните параметры вручную ниже');
+        // Если текстового слоя нет/мало или найдено меньше 3 параметров — распознаём картинку (OCR)
+        let pre=parseIrrData(text);
+        if(text.replace(/\s/g,'').length<40 || pre.__found<3){
+          setIrrMsg('Текстового слоя нет или мало — распознаю изображение (OCR). Это может занять до минуты…');
+          const ocr=await _ocrPdf(file, msg=>setIrrMsg(msg));
+          if(parseIrrData(ocr).__found >= pre.__found) text=ocr;
+        }
       }
       else { text=await file.text(); }
       const parsed=parseIrrData(text);
-      if(!parsed.__found){ throw new Error('в файле не найдены параметры Irrigation Data. Заполните вручную ниже или выгрузите текстовый отчёт из Irricad'); }
+      if(!parsed.__found){ throw new Error('параметры Irrigation Data не распознаны. Попробуйте более чёткий PDF/скан или заполните поля вручную ниже'); }
       applyIrr(parsed);
       setIrrMsg('Распознано параметров: '+parsed.__found);
       try{ const tg=window.Telegram&&window.Telegram.WebApp; if(tg&&tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success'); }catch(_){}
@@ -1844,6 +1938,18 @@ function KPApp(){
       window.XLSX.writeFile(wb,'КП_'+slug+'_'+kpDate+'.xlsx');
     }catch(err){ console.error('XLSX error:',err); alert('Ошибка создания Excel: '+err.message); }
   },[zakazchik,kpDate]);
+
+  // Валидация перед выгрузкой: собрать проблемные позиции
+  const askExport=useCallback((kind)=>{
+    const noPrice=[], noQty=[];
+    sections.forEach(s=>s.items.forEach(it=>{ if(!it.name||!String(it.name).trim())return;
+      if((it.qty>0)&&!(it.price>0)) noPrice.push({sec:s.title,name:it.name});
+      else if(!(it.qty>0)) noQty.push({sec:s.title,name:it.name});
+    }));
+    const hasItems=sections.some(s=>s.items.some(i=>i.name&&i.qty>0&&i.price>0));
+    if(noPrice.length||noQty.length||!hasItems){ setValidate({kind,noPrice,noQty,empty:!hasItems}); }
+    else { kind==='pdf'?savePDF():saveXLSX(); }
+  },[sections,savePDF,saveXLSX]);
 
   // Запасной способ — PDF-скриншот (если векторный по какой-то причине не подходит)
   const savePDFShot=useCallback(async()=>{
@@ -2131,6 +2237,7 @@ function KPApp(){
           if(d.notes!=null)setNotes(d.notes); if(typeof d.globalMarkup==='number')setGlobalMarkup(d.globalMarkup); if(d.priceType)setPriceType(d.priceType); if(d.pipeMat)setPipeMat(d.pipeMat);
           if(d.relief&&d.relief.img)setRelief(d.relief); if(d.reliefOn!=null)setReliefOn(!!d.reliefOn);
           if(d.irr&&typeof d.irr==='object')setIrr(d.irr); if(d.irrOn!=null)setIrrOn(!!d.irrOn);
+          if(d.perHaOn!=null)setPerHaOn(!!d.perHaOn); if(d.hydroOn!=null)setHydroOn(!!d.hydroOn);
           if(Array.isArray(d.sections)&&d.sections.length)setSections(d.sections);
         }
       }catch(e){} }
@@ -2151,11 +2258,11 @@ function KPApp(){
   useEffect(()=>{
     if(!draftLoaded.current) return;
     const t=setTimeout(()=>{
-      const d={kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,pipeMat,reliefOn,relief,irrOn,irr,sections};
+      const d={kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,pipeMat,reliefOn,relief,irrOn,irr,perHaOn,hydroOn,sections};
       STORE.set('np_draft',JSON.stringify(d));
     },700);
     return ()=>clearTimeout(t);
-  },[kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,reliefOn,relief,irrOn,irr,sections]);
+  },[kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,reliefOn,relief,irrOn,irr,perHaOn,hydroOn,sections]);
 
   // Навигация по ячейкам цены/количества стрелками и Enter (как в Excel)
   useEffect(()=>{
@@ -2423,7 +2530,7 @@ function KPApp(){
   const logN=logOn?(parseFloat(logistika)||0):0, montN=montOn?(parseFloat(montazh)||0):0, shefN=shefOn?(parseFloat(shefMontazh)||0):0;
   const final=grand+logN+montN+shefN;
   const unpriced=sections.reduce((t,s)=>t+s.items.filter(i=>i.name&&(i.qty>0)&&!(i.price>0)).length,0);
-  pdfDataRef.current={sections,kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logN,montN,shefN,shefUnit,notes,grand,final,reliefOn,relief,irrOn,irr};
+  pdfDataRef.current={sections,kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logN,montN,shefN,shefUnit,notes,grand,final,reliefOn,relief,irrOn,irr,perHaOn,hydroOn};
   const totalBuiltin=Object.values(BUILTIN_CATALOGS).reduce((t,s)=>t+s.items.length,0);
   const totalExtra=Object.values(extraCatalogs).reduce((t,s)=>t+s.items.length,0);
   const totalCat=totalBuiltin+totalExtra+dynItems.length;
@@ -2448,8 +2555,8 @@ function KPApp(){
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <span style={{fontSize:13,opacity:.85,marginRight:4}}>Итого: <b style={{color:'#9FD0F0'}}>{final.toLocaleString('ru-RU')} ₽</b></span>
           {unpriced>0&&<span title="Позиции с количеством, но без цены" style={{fontSize:12,fontWeight:700,background:'#FFC53D',color:'#5c4a00',borderRadius:12,padding:'3px 10px'}}>⚠ {unpriced} без цены</span>}
-          <button onClick={savePDF} disabled={pdfLoading} title="Скачать PDF сразу" style={{padding:'7px 14px',borderRadius:6,border:'none',cursor:pdfLoading?'default':'pointer',fontWeight:700,fontSize:13,background:pdfLoading?'rgba(255,255,255,0.25)':'#7FAF4D',color:'#fff'}}>{pdfLoading?'…':'PDF'}</button>
-          <button onClick={saveXLSX} title="Выгрузить спецификацию в Excel" style={{padding:'7px 14px',borderRadius:6,border:'none',cursor:'pointer',fontWeight:700,fontSize:13,background:'#1D6F42',color:'#fff'}}>XLSX</button>
+          <button onClick={()=>askExport('pdf')} disabled={pdfLoading} title="Скачать PDF сразу" style={{padding:'7px 14px',borderRadius:6,border:'none',cursor:pdfLoading?'default':'pointer',fontWeight:700,fontSize:13,background:pdfLoading?'rgba(255,255,255,0.25)':'#7FAF4D',color:'#fff'}}>{pdfLoading?'…':'PDF'}</button>
+          <button onClick={()=>askExport('xlsx')} title="Выгрузить спецификацию в Excel" style={{padding:'7px 14px',borderRadius:6,border:'none',cursor:'pointer',fontWeight:700,fontSize:13,background:'#1D6F42',color:'#fff'}}>XLSX</button>
           <button onClick={()=>setShowClear(true)} title="Очистить таблицу позиций" style={{padding:'7px 12px',borderRadius:6,border:'1px solid rgba(255,255,255,0.35)',cursor:'pointer',fontWeight:600,fontSize:13,background:'transparent',color:'#fff'}}>🗑 Очистить</button>
           <button onClick={saveProject} title="Сохранить текущий КП в базу" style={{padding:'7px 14px',borderRadius:6,border:'none',cursor:'pointer',fontWeight:600,fontSize:13,background:'#1E5C8F',color:'#fff'}}>💾 Сохранить</button>
           <button onClick={()=>setShowDb(true)} title="Открыть базу сохранённых КП" style={{padding:'7px 14px',borderRadius:6,border:'1px solid rgba(255,255,255,0.35)',cursor:'pointer',fontWeight:600,fontSize:13,background:'rgba(255,255,255,0.12)',color:'#fff'}}>📂 База{projects.length>0?` (${projects.length})`:''}</button>
@@ -2463,7 +2570,7 @@ function KPApp(){
         <div style={{maxWidth:900,margin:'0 auto',padding:24}}>
           <div style={{display:'flex',gap:10,marginBottom:16}}>
             <button onClick={()=>setView('edit')} style={{padding:'9px 20px',border:'1px solid #E6EBF0',background:'#fff',color:'#0B3A63',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:14}}>← Назад</button>
-            <button onClick={savePDF} disabled={pdfLoading}
+            <button onClick={()=>askExport('pdf')} disabled={pdfLoading}
               style={{padding:'9px 24px',background:pdfLoading?'#5681a8':'#0B3A63',color:'#fff',border:'none',borderRadius:8,cursor:pdfLoading?'wait':'pointer',fontWeight:600,fontSize:14,minWidth:180}}>
               {pdfLoading ? 'Создаётся PDF…' : 'Скачать PDF'}
             </button>
@@ -2471,7 +2578,7 @@ function KPApp(){
               style={{padding:'9px 16px',background:'#fff',color:'#6B7785',border:'1px solid #E6EBF0',borderRadius:8,cursor:pdfLoading?'wait':'pointer',fontWeight:600,fontSize:13}}>
               Скриншот-PDF
             </button>
-            <button onClick={saveXLSX} title="Выгрузить спецификацию в Excel"
+            <button onClick={()=>askExport('xlsx')} title="Выгрузить спецификацию в Excel"
               style={{padding:'9px 20px',background:'#1D6F42',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:14}}>
               Скачать Excel
             </button>
@@ -2481,7 +2588,7 @@ function KPApp(){
               zakazchik={zakazchik} object={object} ispolnitel={ispolnitel} phone={phone}
               projNum={projNum} projArea={projArea} projCulture={projCulture} projRegion={projRegion} projWater={projWater}
               logN={logN} montN={montN} shefN={shefN} shefUnit={shefUnit} notes={notes} grand={grand} final={final}
-              reliefOn={reliefOn} relief={relief} irrOn={irrOn} irr={irr}/>
+              reliefOn={reliefOn} relief={relief} irrOn={irrOn} irr={irr} perHaOn={perHaOn} hydroOn={hydroOn}/>
           </div>
         </div>
       ):(
@@ -2745,7 +2852,7 @@ function KPApp(){
             <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
               <div style={{flex:1,minWidth:220}}>
                 <div style={{fontWeight:700,fontSize:14,color:'#0B3A63'}}>📊 Технические параметры системы (Irrigation Data)</div>
-                <div style={{fontSize:12,color:'#6B7785',marginTop:2}}>Парсинг таблицы Irrigation Data из проектной документации (текстовый отчёт Irricad — RTF / TXT, либо PDF с текстовым слоем). Поля можно заполнить и вручную.</div>
+                <div style={{fontSize:12,color:'#6B7785',marginTop:2}}>Парсинг таблицы Irrigation Data из проектной документации (RTF / TXT / PDF). Если в PDF нет текстового слоя — распознавание изображения (OCR, рус). Поля можно заполнить и вручную.</div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <span style={{fontSize:12,color:'#6B7785'}}>Показывать в КП</span>
@@ -2759,14 +2866,14 @@ function KPApp(){
             </div>
             {irrMsg&&<div style={{marginTop:8,padding:'7px 12px',background:irrMsg.startsWith('Ошибка')?'#fde8e8':'#EAF7EA',borderRadius:5,fontSize:13,color:irrMsg.startsWith('Ошибка')?'#c0392b':'#2e7d32'}}>{irrMsg}</div>}
             {showIrr&&(
-              <div style={{marginTop:12,display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:'8px 18px'}}>
+              <div style={{marginTop:12,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:'6px 22px'}}>
                 {IRR_FIELDS.map(f=>(
-                  <div key={f.k} style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{flex:1,fontSize:12,color:'#555'}}>{f.label}{f.unit?', '+f.unit:''}</span>
-                    <input value={irr[f.k]==null?'':irr[f.k]} onChange={e=>setIrrField(f.k,e.target.value)} style={{...S.inp,width:96,textAlign:'right'}} placeholder="—"/>
+                  <div key={f.k} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,minWidth:0,padding:'2px 0'}}>
+                    <span style={{fontSize:12,color:'#555',lineHeight:1.25,minWidth:0}}>{f.label}{f.unit?', '+f.unit:''}</span>
+                    <input value={irr[f.k]==null?'':irr[f.k]} onChange={e=>setIrrField(f.k,e.target.value)} style={{...S.inp,width:88,textAlign:'right',flexShrink:0}} placeholder="—"/>
                   </div>
                 ))}
-                <div style={{gridColumn:'1 / -1',display:'flex',justifyContent:'flex-end'}}>
+                <div style={{gridColumn:'1 / -1',display:'flex',justifyContent:'flex-end',marginTop:2}}>
                   <button onClick={()=>{ setIrr({}); setIrrMsg(''); }} style={{padding:'6px 12px',background:'#fde8e8',color:'#c0392b',border:'none',borderRadius:6,cursor:'pointer',fontSize:13,fontWeight:600}}>Очистить параметры</button>
                 </div>
               </div>
@@ -2819,6 +2926,17 @@ function KPApp(){
               <label style={S.lbl}>Примечания</label>
               <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Условия, сроки, гарантия..."
                 style={{width:'100%',border:'1px solid #E6EBF0',borderRadius:6,padding:'8px 10px',fontSize:13,minHeight:55,boxSizing:'border-box',resize:'vertical',outline:'none',fontFamily:'Inter,Arial,sans-serif',color:'#1D1D1F'}}/>
+            </div>
+            <div style={{marginTop:14,paddingTop:14,borderTop:'1px solid #EEF2F6'}}>
+              <div style={{fontSize:12,color:'#6B7785',marginBottom:8,fontWeight:600}}>Дополнительно в КП</div>
+              <label style={{display:'flex',alignItems:'center',gap:10,cursor:_areaHa(projArea)>0?'pointer':'not-allowed',opacity:_areaHa(projArea)>0?1:0.5,marginBottom:8,fontSize:13.5,color:'#333'}}>
+                <input type="checkbox" checked={perHaOn&&_areaHa(projArea)>0} disabled={_areaHa(projArea)<=0} onChange={e=>setPerHaOn(e.target.checked)} style={{width:16,height:16}}/>
+                <span>Стоимость за 1 га {_areaHa(projArea)>0?<b style={{color:'#2C7FB8'}}>({(final/_areaHa(projArea)).toLocaleString('ru-RU',{maximumFractionDigits:0})} ₽/га)</b>:<span style={{color:'#999'}}>— укажите площадь проекта</span>}</span>
+              </label>
+              <label style={{display:'flex',alignItems:'center',gap:10,cursor:_hydraulics(irr)?'pointer':'not-allowed',opacity:_hydraulics(irr)?1:0.5,fontSize:13.5,color:'#333'}}>
+                <input type="checkbox" checked={hydroOn&&!!_hydraulics(irr)} disabled={!_hydraulics(irr)} onChange={e=>setHydroOn(e.target.checked)} style={{width:16,height:16}}/>
+                <span>Гидравлическая сводка {_hydraulics(irr)?<b style={{color:'#2C7FB8'}}>(насос, фильтрация)</b>:<span style={{color:'#999'}}>— нужны Irrigation Data</span>}</span>
+              </label>
             </div>
           </div>
 
@@ -2957,6 +3075,46 @@ function KPApp(){
       )}
 
       {/* МОДАЛКА ОЧИСТКИ */}
+      {validate&&(()=>{
+        const total=validate.noPrice.length+validate.noQty.length;
+        const kindLabel=validate.kind==='pdf'?'PDF':'Excel';
+        const proceed=()=>{ const k=validate.kind; setValidate(null); k==='pdf'?savePDF():saveXLSX(); };
+        return (
+          <div onClick={()=>setValidate(null)} style={{position:'fixed',inset:0,background:'rgba(11,25,45,0.55)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:12,maxWidth:520,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 12px 48px rgba(0,0,0,0.3)'}}>
+              <div style={{padding:'18px 22px',borderBottom:'1px solid #EEF2F6'}}>
+                <div style={{fontSize:17,fontWeight:700,color:'#0B3A63'}}>Проверка перед выгрузкой {kindLabel}</div>
+              </div>
+              <div style={{padding:'16px 22px',fontSize:14,color:'#333'}}>
+                {validate.empty&&<div style={{padding:'10px 14px',background:'#fde8e8',borderRadius:8,color:'#c0392b',marginBottom:12,fontWeight:600}}>В спецификации нет ни одной позиции с ценой и количеством.</div>}
+                {validate.noPrice.length>0&&(
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontWeight:700,color:'#b8860b',marginBottom:6}}>⚠ Без цены ({validate.noPrice.length}):</div>
+                    <ul style={{margin:0,paddingLeft:20,color:'#555',fontSize:13,lineHeight:1.6}}>
+                      {validate.noPrice.slice(0,8).map((x,i)=><li key={i}>{x.name}</li>)}
+                      {validate.noPrice.length>8&&<li>…ещё {validate.noPrice.length-8}</li>}
+                    </ul>
+                  </div>
+                )}
+                {validate.noQty.length>0&&(
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontWeight:700,color:'#7A4DAF',marginBottom:6}}>Без количества ({validate.noQty.length}):</div>
+                    <ul style={{margin:0,paddingLeft:20,color:'#555',fontSize:13,lineHeight:1.6}}>
+                      {validate.noQty.slice(0,6).map((x,i)=><li key={i}>{x.name}</li>)}
+                      {validate.noQty.length>6&&<li>…ещё {validate.noQty.length-6}</li>}
+                    </ul>
+                  </div>
+                )}
+                <div style={{fontSize:13,color:'#6B7785'}}>Позиции без цены попадут в {kindLabel} с нулевой суммой, без количества — не попадут вовсе.</div>
+              </div>
+              <div style={{padding:'14px 22px',borderTop:'1px solid #EEF2F6',display:'flex',gap:10,justifyContent:'flex-end'}}>
+                <button onClick={()=>setValidate(null)} style={{padding:'9px 18px',background:'#fff',color:'#0B3A63',border:'1px solid #E6EBF0',borderRadius:8,cursor:'pointer',fontWeight:600}}>Вернуться и исправить</button>
+                <button onClick={proceed} style={{padding:'9px 18px',background:'#0B3A63',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:700}}>Всё равно скачать {kindLabel}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {showClear&&(
         <div onClick={()=>setShowClear(false)}
           style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:2100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
