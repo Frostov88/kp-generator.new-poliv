@@ -303,6 +303,7 @@ const SECTIONS=[
   {id:'poliv',title:'Поливная линия'},
   {id:'krany',title:'Крановая группа'},
   {id:'nasos',title:'Насосно-фильтрующая станция'},
+  {id:'zayavka',title:'Заявка от заказчика'},
 ];
 let uid=Date.now();
 const nid=()=>++uid;
@@ -1012,34 +1013,6 @@ function parseIrrData(text){
 }
 
 // Ленивая загрузка внешнего скрипта
-function _loadScript(src){ return new Promise((res,rej)=>{ try{ if(window.Tesseract&&/tesseract/i.test(src)) return res(); const ex=Array.prototype.slice.call(document.scripts).some(s=>s.src===src); if(ex) return res(); }catch(e){} const s=document.createElement('script'); s.src=src; s.async=true; s.onload=()=>res(); s.onerror=()=>rej(new Error('не удалось загрузить '+src)); document.head.appendChild(s); }); }
-async function _ensureTesseract(){ if(window.Tesseract) return window.Tesseract; await _loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'); if(!window.Tesseract) throw new Error('OCR-движок не загрузился (Tesseract)'); return window.Tesseract; }
-
-// OCR PDF: рендерим страницы в картинку и распознаём текст (для PDF без текстового слоя)
-async function _ocrPdf(file, onProgress){
-  const pdfjsLib=window.pdfjsLib; if(!pdfjsLib) throw new Error('PDF-движок недоступен');
-  if(!pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  if(onProgress) onProgress('Загрузка модуля распознавания (один раз, ~несколько МБ)…');
-  const T=await _ensureTesseract();
-  const ab=await file.arrayBuffer();
-  const pdf=await pdfjsLib.getDocument({data:ab}).promise;
-  const maxPages=Math.min(pdf.numPages,4);
-  let full='';
-  for(let p=1;p<=maxPages;p++){
-    if(onProgress) onProgress('Рендер страницы '+p+'/'+maxPages+'…');
-    const page=await pdf.getPage(p);
-    const v1=page.getViewport({scale:1});
-    const scale=Math.max(1.6,Math.min(3, 3000/Math.max(v1.width,v1.height)));
-    const vp=page.getViewport({scale});
-    const cv=document.createElement('canvas'); cv.width=Math.round(vp.width); cv.height=Math.round(vp.height);
-    const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,cv.width,cv.height);
-    await page.render({canvasContext:ctx,viewport:vp}).promise;
-    const res=await T.recognize(cv,'rus+eng',{ logger:m=>{ if(m&&m.status==='recognizing text'&&onProgress) onProgress('Распознавание '+Math.round((m.progress||0)*100)+'% (стр. '+p+'/'+maxPages+')…'); } });
-    full+='\n'+((res&&res.data&&res.data.text)||'');
-    try{ if(parseIrrData(full).__found>=4) break; }catch(e){}
-  }
-  return full;
-}
 
 // Площадь участка в гектарах из строки вида «95 га» / «197,49 га»
 function _areaHa(v){ const n=parseFloat(String(v==null?'':v).replace(',','.').replace(/[^0-9.]/g,'')); return isFinite(n)&&n>0?n:0; }
@@ -1823,15 +1796,9 @@ function KPApp(){
         const ab=await file.arrayBuffer();
         const pdf=await pdfjsLib.getDocument({data:ab}).promise;
         let parts=[];
-        for(let p=1;p<=pdf.numPages;p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent(); parts.push(tc.items.map(i=>i.str).join(' ')); }
+        for(let p=1;p<=pdf.numPages;p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent(); parts.push(typeof reconstructPdfText==='function'?reconstructPdfText(tc):tc.items.map(i=>i.str).join(' ')); }
         text=parts.join('\n');
-        // Если текстового слоя нет/мало или найдено меньше 3 параметров — распознаём картинку (OCR)
-        let pre=parseIrrData(text);
-        if(text.replace(/\s/g,'').length<40 || pre.__found<3){
-          setIrrMsg('Текстового слоя нет или мало — распознаю изображение (OCR). Это может занять до минуты…');
-          const ocr=await _ocrPdf(file, msg=>setIrrMsg(msg));
-          if(parseIrrData(ocr).__found >= pre.__found) text=ocr;
-        }
+        if(text.replace(/\s/g,'').length<20) throw new Error('в этом PDF нет текстового слоя (векторный чертёж) — используйте текстовый отчёт Irricad (RTF/TXT) или заполните поля вручную ниже');
       }
       else { text=await file.text(); }
       const parsed=parseIrrData(text);
@@ -2852,7 +2819,7 @@ function KPApp(){
             <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
               <div style={{flex:1,minWidth:220}}>
                 <div style={{fontWeight:700,fontSize:14,color:'#0B3A63'}}>📊 Технические параметры системы (Irrigation Data)</div>
-                <div style={{fontSize:12,color:'#6B7785',marginTop:2}}>Парсинг таблицы Irrigation Data из проектной документации (RTF / TXT / PDF). Если в PDF нет текстового слоя — распознавание изображения (OCR, рус). Поля можно заполнить и вручную.</div>
+                <div style={{fontSize:12,color:'#6B7785',marginTop:2}}>Парсинг таблицы Irrigation Data из проектной документации (текстовый отчёт Irricad — RTF / TXT, либо PDF с текстовым слоем). Поля можно заполнить и вручную.</div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <span style={{fontSize:12,color:'#6B7785'}}>Показывать в КП</span>
