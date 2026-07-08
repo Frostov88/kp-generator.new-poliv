@@ -305,7 +305,6 @@ const SECTIONS=[
   {id:'nasos',title:'Насосно-фильтрующая станция'},
   {id:'zayavka',title:'Заявка от заказчика'},
 ];
-const fmtMoney=n=>((+n||0).toLocaleString('ru-RU'))+' ₽';
 let uid=Date.now();
 const nid=()=>++uid;
 const fmtKpNum=n=>'КП-'+String(n).padStart(3,'0');
@@ -369,7 +368,6 @@ function NumInput({ value, onChange, style, placeholder='0', decimals=2, classNa
       onFocus={handleFocus}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
-      inputMode="decimal"
       placeholder={focused ? '' : placeholder}
       style={{...style, textAlign:'right', fontVariantNumeric:'tabular-nums'}}
     />
@@ -968,27 +966,6 @@ function renderRelief3D(data, maxW){
   for(let s=0;s<=4;s++){ const f=s/4, y=cbY1+(cbY0-cbY1)*f, val=minA+(maxA-minA)*f; ctx.fillText(Math.round(val)+' м', cbX+barW+5, y); }
   ctx.fillText('Z', cbX, cbY0-12);
   return {dataURL:cv.toDataURL('image/png'),w:W,h:Hpx};
-}
-
-// Компактная версия рельефа для хранения (без картинок base64 — только исходные точки)
-function reliefForStorage(r){
-  if(!r) return null;
-  if(!(r.pts&&r.pts.length)) return r; // старый формат без точек — храним как есть
-  const {img,img2d,img3d,w,h,w2d,h2d,w3d,h3d, ...rest}=r;
-  return rest; // pts, polys, min, max, diff, count, name, source, mode
-}
-// Восстановление картинок рельефа из точек (перерендер при загрузке черновика)
-function reliefHydrate(r){
-  if(!r) return null;
-  if(r.img) return r;                       // картинки уже есть (старый формат)
-  if(!(r.pts&&r.pts.length)) return null;   // нечего рендерить
-  try{
-    const data={pts:r.pts,polys:r.polys,min:r.min,max:r.max,diff:r.diff,name:r.name,count:r.count,source:r.source};
-    const r2=renderReliefCanvas(data,900);
-    const r3=renderRelief3D(data,1100);
-    const mode=r.mode||'3d', act=mode==='3d'?r3:r2;
-    return {...r, img:act.dataURL,w:act.w,h:act.h, img2d:r2.dataURL,w2d:r2.w,h2d:r2.h, img3d:r3.dataURL,w3d:r3.w,h3d:r3.h, mode};
-  }catch(e){ console.error('relief hydrate',e); return null; }
 }
 
 // ===== Irrigation Data (технические параметры из проектной документации) =====
@@ -1785,7 +1762,7 @@ function KPApp(){
       const r2=renderReliefCanvas(data,900);
       const r3=renderRelief3D(data,1100);
       const mode=relief3d?'3d':'2d', act=mode==='3d'?r3:r2;
-      setRelief({img:act.dataURL,w:act.w,h:act.h, img2d:r2.dataURL,w2d:r2.w,h2d:r2.h, img3d:r3.dataURL,w3d:r3.w,h3d:r3.h, mode, min:data.min,max:data.max,diff:data.diff,count:data.count||(data.pts&&data.pts.length)||0,name:data.name||String(file.name).replace(/\.(kml|kmz)$/i,''),source:data.source, pts:data.pts, polys:data.polys});
+      setRelief({img:act.dataURL,w:act.w,h:act.h, img2d:r2.dataURL,w2d:r2.w,h2d:r2.h, img3d:r3.dataURL,w3d:r3.w,h3d:r3.h, mode, min:data.min,max:data.max,diff:data.diff,count:data.count||(data.pts&&data.pts.length)||0,name:data.name||String(file.name).replace(/\.(kml|kmz)$/i,''),source:data.source});
       setReliefOn(true);
       setReliefMsg(data.source==='dem'?('Готово. Высоты из модели рельефа SRTM, точек: '+(data.count||0)):'Готово. Высоты взяты из KML.');
       try{ const tg=window.Telegram&&window.Telegram.WebApp; if(tg&&tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success'); }catch(_){}
@@ -1801,9 +1778,6 @@ function KPApp(){
   const [perHaOn,setPerHaOn]=useState(false);
   const [hydroOn,setHydroOn]=useState(false);
   const [validate,setValidate]=useState(null);
-  const [toast,setToast]=useState(null); // {msg,type}
-  const toastTimer=useRef();
-  const showToast=useCallback((msg,type)=>{ setToast({msg,type:type||'info'}); clearTimeout(toastTimer.current); toastTimer.current=setTimeout(()=>setToast(null),4000); },[]);
   const setIrrField=(k,v)=>setIrr(p=>({...p,[k]:v}));
   const applyIrr=parsed=>{
     setIrr(prev=>{ const next={...prev}; IRR_FIELDS.forEach(f=>{ if(parsed[f.k]!=null&&String(parsed[f.k]).trim()!=='') next[f.k]=parsed[f.k]; }); return next; });
@@ -1919,9 +1893,9 @@ function KPApp(){
       const pdf=await buildPdf();
       const slug=(zakazchik||'КП').replace(/[^\wа-яёА-ЯЁ]/g,'_').replace(/_+/g,'_').slice(0,20);
       pdf.save('КП_'+slug+'_'+kpDate+'.pdf');
-    }catch(err){ console.error('PDF error:',err); showToast('Ошибка создания PDF: '+err.message,'error'); }
+    }catch(err){ console.error('PDF error:',err); alert('Ошибка создания PDF: '+err.message); }
     setPdfLoading(false);
-  },[buildPdf,zakazchik,kpDate,showToast]);
+  },[buildPdf,zakazchik,kpDate]);
 
   // Экспорт спецификации в Excel
   const saveXLSX=useCallback(()=>{
@@ -1929,8 +1903,8 @@ function KPApp(){
       const wb=makeXlsx(pdfDataRef.current);
       const slug=(zakazchik||'КП').replace(/[^\wа-яёА-ЯЁ]/g,'_').replace(/_+/g,'_').slice(0,20);
       window.XLSX.writeFile(wb,'КП_'+slug+'_'+kpDate+'.xlsx');
-    }catch(err){ console.error('XLSX error:',err); showToast('Ошибка создания Excel: '+err.message,'error'); }
-  },[zakazchik,kpDate,showToast]);
+    }catch(err){ console.error('XLSX error:',err); alert('Ошибка создания Excel: '+err.message); }
+  },[zakazchik,kpDate]);
 
   // Валидация перед выгрузкой: собрать проблемные позиции
   const askExport=useCallback((kind)=>{
@@ -1951,7 +1925,7 @@ function KPApp(){
       const pdf=await buildPdfShot();
       const slug=(zakazchik||'КП').replace(/[^\wа-яёА-ЯЁ]/g,'_').replace(/_+/g,'_').slice(0,20);
       pdf.save('КП_'+slug+'_'+kpDate+'_скан.pdf');
-    }catch(err){ console.error('PDF error:',err); showToast('Ошибка создания PDF: '+err.message,'error'); }
+    }catch(err){ console.error('PDF error:',err); alert('Ошибка создания PDF: '+err.message); }
     setPdfLoading(false);
   },[buildPdfShot,zakazchik,kpDate]);
 
@@ -1989,7 +1963,7 @@ function KPApp(){
       setTgStatus('error');
       setTgError(err.message);
     }
-  },[buildPdf,zakazchik,kpDate,showToast]);
+  },[buildPdf,zakazchik,kpDate]);
 
   const rtfRef=useRef(), xlsxRef=useRef();
 
@@ -2228,7 +2202,7 @@ function KPApp(){
           if(d.logistika!=null)setLogistika(d.logistika); if(d.montazh!=null)setMontazh(d.montazh); if(d.shefMontazh!=null)setShefMontazh(d.shefMontazh); if(d.shefUnit)setShefUnit(d.shefUnit);
           if(d.logOn!=null)setLogOn(d.logOn); if(d.montOn!=null)setMontOn(d.montOn); if(d.shefOn!=null)setShefOn(d.shefOn);
           if(d.notes!=null)setNotes(d.notes); if(typeof d.globalMarkup==='number')setGlobalMarkup(d.globalMarkup); if(d.priceType)setPriceType(d.priceType); if(d.pipeMat)setPipeMat(d.pipeMat);
-          if(d.relief){ const rh=reliefHydrate(d.relief); if(rh) setRelief(rh); } if(d.reliefOn!=null)setReliefOn(!!d.reliefOn);
+          if(d.relief&&d.relief.img)setRelief(d.relief); if(d.reliefOn!=null)setReliefOn(!!d.reliefOn);
           if(d.irr&&typeof d.irr==='object')setIrr(d.irr); if(d.irrOn!=null)setIrrOn(!!d.irrOn);
           if(d.perHaOn!=null)setPerHaOn(!!d.perHaOn); if(d.hydroOn!=null)setHydroOn(!!d.hydroOn);
           if(Array.isArray(d.sections)&&d.sections.length)setSections(d.sections);
@@ -2251,8 +2225,8 @@ function KPApp(){
   useEffect(()=>{
     if(!draftLoaded.current) return;
     const t=setTimeout(()=>{
-      const d={kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,pipeMat,reliefOn,relief:reliefForStorage(relief),irrOn,irr,perHaOn,hydroOn,sections};
-      try{ STORE.set('np_draft',JSON.stringify(d)).then(r=>{ if(!r) showToast('\u26a0 \u0427\u0435\u0440\u043d\u043e\u0432\u0438\u043a \u043d\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u043b\u0441\u044f \u2014 \u0445\u0440\u0430\u043d\u0438\u043b\u0438\u0449\u0435 \u043f\u0435\u0440\u0435\u043f\u043e\u043b\u043d\u0435\u043d\u043e','error'); }).catch(()=>showToast('\u26a0 \u0427\u0435\u0440\u043d\u043e\u0432\u0438\u043a \u043d\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u043b\u0441\u044f','error')); }catch(e){ showToast('\u26a0 \u0427\u0435\u0440\u043d\u043e\u0432\u0438\u043a \u043d\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u043b\u0441\u044f','error'); }
+      const d={kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,pipeMat,reliefOn,relief,irrOn,irr,perHaOn,hydroOn,sections};
+      STORE.set('np_draft',JSON.stringify(d));
     },700);
     return ()=>clearTimeout(t);
   },[kpNum,kpDate,typeCeny,zakazchik,object,ispolnitel,phone,projNum,projArea,projCulture,projRegion,projWater,logistika,montazh,shefMontazh,shefUnit,logOn,montOn,shefOn,notes,globalMarkup,priceType,reliefOn,relief,irrOn,irr,perHaOn,hydroOn,sections]);
@@ -3108,11 +3082,6 @@ function KPApp(){
           </div>
         );
       })()}
-      {toast&&(
-        <div style={{position:'fixed',left:'50%',bottom:24,transform:'translateX(-50%)',zIndex:3000,background:toast.type==='error'?'#c0392b':'#0B3A63',color:'#fff',padding:'11px 20px',borderRadius:8,fontSize:14,fontWeight:600,boxShadow:'0 6px 24px rgba(0,0,0,0.3)',maxWidth:'90vw'}} onClick={()=>setToast(null)}>
-          {toast.msg}
-        </div>
-      )}
       {showClear&&(
         <div onClick={()=>setShowClear(false)}
           style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:2100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
@@ -3137,29 +3106,8 @@ function KPApp(){
   );
 }
 
-class ErrorBoundary extends React.Component{
-  constructor(p){ super(p); this.state={err:null}; }
-  static getDerivedStateFromError(err){ return {err}; }
-  componentDidCatch(err,info){ try{ console.error('ErrorBoundary:',err,info); }catch(e){} }
-  render(){
-    if(!this.state.err) return this.props.children;
-    const msg=(this.state.err&&this.state.err.message)||String(this.state.err);
-    return (
-      <div style={{maxWidth:560,margin:'60px auto',padding:'28px 30px',background:'#fff',borderRadius:12,boxShadow:'0 4px 24px rgba(0,0,0,0.12)',fontFamily:'Inter,Arial,sans-serif',color:'#1D1D1F'}}>
-        <div style={{fontSize:20,fontWeight:700,color:'#0B3A63',marginBottom:8}}>Что-то пошло не так</div>
-        <div style={{fontSize:14,color:'#555',marginBottom:6}}>Приложение столкнулось с ошибкой и не может продолжить. Ваш черновик сохранён автоматически.</div>
-        <div style={{fontSize:12,color:'#999',background:'#F6F8FA',borderRadius:6,padding:'8px 10px',marginBottom:18,fontFamily:'monospace',whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{msg}</div>
-        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-          <button onClick={()=>{ try{ location.reload(); }catch(e){} }} style={{padding:'10px 20px',background:'#0B3A63',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:14}}>Перезагрузить</button>
-          <button onClick={()=>{ try{ localStorage.removeItem('np_draft'); }catch(e){} try{ location.reload(); }catch(e){} }} style={{padding:'10px 20px',background:'#fff',color:'#c0392b',border:'1px solid #f0c0c0',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:14}}>Сбросить черновик и перезагрузить</button>
-        </div>
-      </div>
-    );
-  }
-}
-
     const root=ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<ErrorBoundary><KPApp/></ErrorBoundary>);
+    root.render(<KPApp/>);
   </script>
 </body>
 </html>
